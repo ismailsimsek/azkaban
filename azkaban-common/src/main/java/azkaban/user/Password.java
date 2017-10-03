@@ -47,7 +47,8 @@ public class Password {
 	{
 		return this.salt;
 	}
-
+	
+	@Override
 	public String toString() {
 		return "Password " + this.password + "Salt " + this.salt;
 	}
