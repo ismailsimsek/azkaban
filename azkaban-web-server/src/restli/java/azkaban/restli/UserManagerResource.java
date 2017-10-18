@@ -28,6 +28,9 @@ import com.linkedin.restli.server.resources.ResourceContextHolder;
 import java.util.UUID;
 import javax.servlet.ServletException;
 import org.apache.log4j.Logger;
+import azkaban.server.HttpRequestUtils;
+import com.linkedin.restli.server.annotations.Context;
+import javax.servlet.http.HttpServletRequest;
 
 @RestLiActions(name = "user", namespace = "azkaban.restli")
 public class UserManagerResource extends ResourceContextHolder {
@@ -40,16 +43,13 @@ public class UserManagerResource extends ResourceContextHolder {
   }
 
   @Action(name = "login")
-  public String login(@ActionParam("username") final String username,
-      @ActionParam("password") final String password) throws UserManagerException,
-      ServletException {
+	public String login() throws UserManagerException,
+     ServletException {
+	HttpServletRequest req = (HttpServletRequest) this.getContext().getRequestHeaders();
     final String ip = ResourceUtils.getRealClientIpAddr(this.getContext());
-    logger
-        .info("Attempting to login for " + username + " from ip '" + ip + "'");
+    final Session session = createSession(req, ip);
 
-    final Session session = createSession(username, password, ip);
-
-    logger.info("Session id created for user '" + username + "' and ip " + ip);
+		logger.info("Session id created for user '" + session.getUser().getUserId() + "' and ip " + ip);
     return session.getSessionId();
   }
 
@@ -65,10 +65,10 @@ public class UserManagerResource extends ResourceContextHolder {
     return user;
   }
 
-  private Session createSession(final String username, final String password, final String ip)
+	private Session createSession(HttpServletRequest req, String ip)
       throws UserManagerException, ServletException {
     final UserManager manager = getAzkaban().getUserManager();
-    final azkaban.user.User user = manager.getUser(username, password);
+    final azkaban.user.User user = manager.getUser(req);
 
     final String randomUID = UUID.randomUUID().toString();
     final Session session = new Session(randomUID, user, ip);

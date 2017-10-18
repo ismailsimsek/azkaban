@@ -27,7 +27,7 @@ import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 
-public class XmlUserManagerTest {
+public class XmlSSLCertUserManagerTest {
 
   private final Props baseProps = new Props();
 
@@ -48,12 +48,12 @@ public class XmlUserManagerTest {
 
     // Should throw
     try {
-      final XmlUserManager manager = new XmlUserManager(props);
+			final XmlSSLCertUserManager manager = new XmlSSLCertUserManager(props);
     } catch (final UndefinedPropertyException e) {
       return;
     }
 
-    fail("XmlUserManager should throw an exception when the file property isn't set");
+		fail("XmlSSLCertUserManager should throw an exception when the file property isn't set");
   }
 
   /**
@@ -63,85 +63,85 @@ public class XmlUserManagerTest {
   @Test
   public void testDoNotExist() throws Exception {
     final Props props = new Props(this.baseProps);
-    props.put(XmlUserManager.XML_FILE_PARAM, "unit/test-conf/doNotExist.xml");
+		props.put(XmlSSLCertUserManager.XML_FILE_PARAM, "unit/test-conf/doNotExist.xml");
 
     try {
-      final UserManager manager = new XmlUserManager(props);
+			final UserManager manager = new XmlSSLCertUserManager(props);
     } catch (final RuntimeException e) {
       return;
     }
 
-    fail("XmlUserManager should throw an exception when the file doesn't exist");
+		fail("XmlSSLCertUserManager should throw an exception when the file doesn't exist");
   }
 
   @Ignore
   @Test
   public void testBasicLoad() throws Exception {
     final Props props = new Props(this.baseProps);
-    props.put(XmlUserManager.XML_FILE_PARAM,
+		props.put(XmlSSLCertUserManager.XML_FILE_PARAM,
         "unit/test-conf/azkaban-users-test1.xml");
 
     UserManager manager = null;
     try {
-      manager = new XmlUserManager(props);
+			manager = new XmlSSLCertUserManager(props);
     } catch (final RuntimeException e) {
       e.printStackTrace();
-      fail("XmlUserManager should've found file azkaban-users.xml");
+			fail("XmlSSLCertUserManager should've found file azkaban-users.xml");
     }
 
     try {
-      manager.getUser(TestUtils.getTestRequest("user0", null));
+			manager.getUser(TestUtils.getTestSSLCertRequest("user0"));
     } catch (final UserManagerException e) {
       System.out.println("Exception handled correctly: " + e.getMessage());
     }
 
     try {
-			manager.getUser(TestUtils.getTestRequest(null, "etw"));
+			manager.getUser(TestUtils.getTestSSLCertRequest(null));
     } catch (final UserManagerException e) {
       System.out.println("Exception handled correctly: " + e.getMessage());
     }
 
     try {
-			manager.getUser(TestUtils.getTestRequest("user0", "user0"));
+			manager.getUser(TestUtils.getTestSSLCertRequest("user0"));
     } catch (final UserManagerException e) {
       System.out.println("Exception handled correctly: " + e.getMessage());
     }
 
     try {
-			manager.getUser(TestUtils.getTestRequest("user0", "password0"));
+			manager.getUser(TestUtils.getTestSSLCertRequest("user0"));
     } catch (final UserManagerException e) {
       e.printStackTrace();
-      fail("XmlUserManager should've returned a user.");
+			fail("XmlSSLCertUserManager should've returned a user.");
     }
 
-		final User user0 = manager.getUser(TestUtils.getTestRequest("user0", "password0"));
+		final User user0 = manager.getUser(TestUtils.getTestSSLCertRequest("user0"));
     checkUser(user0, "role0", "group0");
 
-		final User user1 = manager.getUser(TestUtils.getTestRequest("user1", "password1"));
+		final User user1 = manager.getUser(TestUtils.getTestSSLCertRequest("user1"));
     checkUser(user1, "role0,role1", "group1,group2");
 
-		final User user2 = manager.getUser(TestUtils.getTestRequest("user2", "password2"));
+		final User user2 = manager.getUser(TestUtils.getTestSSLCertRequest("user2"));
     checkUser(user2, "role0,role1,role2", "group1,group2,group3");
 
-		final User user3 = manager.getUser(TestUtils.getTestRequest("user3", "password3"));
+		final User user3 = manager.getUser(TestUtils.getTestSSLCertRequest("user3"));
     checkUser(user3, "role1,role2", "group1,group2");
 
-		final User user4 = manager.getUser(TestUtils.getTestRequest("user4", "password4"));
+		final User user4 = manager.getUser(TestUtils.getTestSSLCertRequest("user4"));
     checkUser(user4, "role1,role2", "group1,group2");
 
-		final User user5 = manager.getUser(TestUtils.getTestRequest("user5", "password5"));
+		final User user5 = manager.getUser(TestUtils.getTestSSLCertRequest("user5"));
     checkUser(user5, "role1,role2", "group1,group2");
 
-		final User user6 = manager.getUser(TestUtils.getTestRequest("user6", "password6"));
+		final User user6 = manager.getUser(TestUtils.getTestSSLCertRequest("user6"));
     checkUser(user6, "role3,role2", "group1,group2");
 
-		final User user7 = manager.getUser(TestUtils.getTestRequest("user7", "password7"));
+		final User user7 = manager.getUser(TestUtils.getTestSSLCertRequest("user7"));
     checkUser(user7, "", "group1");
 
-		final User user8 = manager.getUser(TestUtils.getTestRequest("user8", "password8"));
+		final User user8 = manager.getUser(TestUtils.getTestSSLCertRequest("user8"));
     checkUser(user8, "role3", "");
 
-		final User user9 = manager.getUser(TestUtils.getTestRequest("user9", "password9"));
+		final User user9 = manager.getUser(TestUtils.getTestSSLCertRequest("user9"));
     checkUser(user9, "", "");
   }
 

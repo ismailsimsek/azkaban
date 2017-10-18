@@ -71,7 +71,7 @@ public class PageUtilsTest {
     final HttpServletRequest httpServletRequest = mock(HttpServletRequest.class);
     final HttpServletResponse httpServletResponse = mock(HttpServletResponse.class);
     final UserManager userManager = TestUtils.createTestXmlUserManager();
-    final User testAdmin = userManager.getUser("testAdmin", "testAdmin");
+		final User testAdmin = userManager.getUser(TestUtils.getTestRequest("testAdmin", "testAdmin"));
     final Session session = new Session("fake-session-id", testAdmin, "127.0.0.1");
 
     final VelocityEngine velocityEngine = new VelocityEngine();

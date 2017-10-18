@@ -26,6 +26,9 @@ import azkaban.user.XmlUserManager;
 import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
+import javax.servlet.http.HttpServletRequest;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Commonly used utils method for unit/integration tests
@@ -35,6 +38,19 @@ public class TestUtils {
   public static User getTestUser() {
     return new User("testUser");
   }
+
+	public static HttpServletRequest getTestRequest(String username, String password) {
+		final HttpServletRequest mockRequest = mock(HttpServletRequest.class);
+		when(mockRequest.getParameter("username")).thenReturn(username);
+		when(mockRequest.getParameter("password")).thenReturn(password);
+		return mockRequest;
+	}
+
+	public static HttpServletRequest getTestSSLCertRequest(String username) {
+		final HttpServletRequest mockRequest = mock(HttpServletRequest.class);
+		when(mockRequest.getParameter("ssl_client_s_dn_cn")).thenReturn(username);
+		return mockRequest;
+	}
 
   /* Helper method to create an ExecutableFlow from serialized description */
   public static ExecutableFlow createExecutableFlow(final String projectName,

@@ -127,7 +127,7 @@ public abstract class LoginAbstractAzkabanServlet extends
         retVal.put("error", "session");
         this.writeJSON(resp, retVal);
       } else {
-        handleLogin(req, resp);
+        handleLogin(req, resp, null);
       }
     }
   }
@@ -248,11 +248,6 @@ public abstract class LoginAbstractAzkabanServlet extends
     return getApplication().getSessionCache().getSession(sessionId);
   }
 
-  private void handleLogin(final HttpServletRequest req, final HttpServletResponse resp)
-      throws ServletException, IOException {
-    handleLogin(req, resp, null);
-  }
-
   private void handleLogin(final HttpServletRequest req, final HttpServletResponse resp,
       final String errorMsg) throws ServletException, IOException {
     final Page page = newPage(req, resp, "azkaban/webapp/servlet/velocity/login.vm");
@@ -290,18 +285,8 @@ public abstract class LoginAbstractAzkabanServlet extends
           }
         }
 
-        // if there's no valid session, see if it's a one time session.
-        if (!params.containsKey("username") || !params.containsKey("password")) {
-          writeResponse(resp, "Login error. Need username and password");
-          return;
-        }
-
-        final String username = (String) params.get("username");
-        final String password = (String) params.get("password");
-        final String ip = getRealClientIpAddr(req);
-
         try {
-          session = createSession(username, password, ip);
+          session = createSession(req);
         } catch (final UserManagerException e) {
           writeResponse(resp, "Login error: " + e.getMessage());
           return;
@@ -315,27 +300,16 @@ public abstract class LoginAbstractAzkabanServlet extends
       handleAjaxLoginAction(req, resp, obj);
       this.writeJSON(resp, obj);
     } else if (session == null) {
-      if (hasParam(req, "username") && hasParam(req, "password")) {
         // If it's a post command with curl, we create a temporary session
         try {
           session = createSession(req);
         } catch (final UserManagerException e) {
-          writeResponse(resp, "Login error: " + e.getMessage());
+            if (isAjaxCall(req)) {
+				writeResponse(resp, createJsonResponse("error", e.getMessage(), "login", null));
+				} else {
+				writeResponse(resp, "Login error: " + e.getMessage());
+				}
         }
-
-        handlePost(req, resp, session);
-      } else {
-        // There are no valid sessions and temporary logins, no we either pass
-        // back a message or redirect.
-        if (isAjaxCall(req)) {
-          final String response =
-              createJsonResponse("error", "Invalid Session. Need to re-login",
-                  "login", null);
-          writeResponse(resp, response);
-        } else {
-          handleLogin(req, resp, "Enter username and password");
-        }
-      }
     } else {
       handlePost(req, resp, session);
     }
@@ -361,17 +335,10 @@ public abstract class LoginAbstractAzkabanServlet extends
 
   private Session createSession(final HttpServletRequest req)
       throws UserManagerException, ServletException {
-    final String username = getParam(req, "username");
-    final String password = getParam(req, "password");
     final String ip = getRealClientIpAddr(req);
 
-    return createSession(username, password, ip);
-  }
-
-  private Session createSession(final String username, final String password, final String ip)
-      throws UserManagerException, ServletException {
     final UserManager manager = getApplication().getUserManager();
-    final User user = manager.getUser(username, password);
+    final User user = manager.getUser(req);
 
     final String randomUID = UUID.randomUUID().toString();
     final Session session = new Session(randomUID, user, ip);
@@ -400,7 +367,6 @@ public abstract class LoginAbstractAzkabanServlet extends
   protected void handleAjaxLoginAction(final HttpServletRequest req,
       final HttpServletResponse resp, final Map<String, Object> ret)
       throws ServletException {
-    if (hasParam(req, "username") && hasParam(req, "password")) {
       Session session = null;
       try {
         session = createSession(req);
@@ -415,9 +381,6 @@ public abstract class LoginAbstractAzkabanServlet extends
       getApplication().getSessionCache().addSession(session);
       ret.put("status", "success");
       ret.put("session.id", session.getSessionId());
-    } else {
-      ret.put("error", "Incorrect Login.");
-    }
   }
 
   protected void writeResponse(final HttpServletResponse resp, final String response)

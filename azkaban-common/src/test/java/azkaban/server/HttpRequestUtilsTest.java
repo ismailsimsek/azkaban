@@ -51,7 +51,7 @@ public final class HttpRequestUtilsTest {
       ExecutorManagerException, UserManagerException {
     final ExecutableFlow flow = createExecutableFlow();
     final UserManager manager = TestUtils.createTestXmlUserManager();
-    final User user = manager.getUser("testUser", "testUser");
+		final User user = manager.getUser(TestUtils.getTestRequest("testUser", "testUser"));
 
     HttpRequestUtils.filterAdminOnlyFlowParams(manager,
         flow.getExecutionOptions(), user);
@@ -68,7 +68,7 @@ public final class HttpRequestUtilsTest {
       ExecutorManagerException, UserManagerException {
     final ExecutableFlow flow = createExecutableFlow();
     final UserManager manager = TestUtils.createTestXmlUserManager();
-    final User user = manager.getUser("testAdmin", "testAdmin");
+		final User user = manager.getUser(TestUtils.getTestRequest("testAdmin", "testAdmin"));
 
     HttpRequestUtils.filterAdminOnlyFlowParams(manager,
         flow.getExecutionOptions(), user);
@@ -99,7 +99,7 @@ public final class HttpRequestUtilsTest {
   @Test
   public void testHasAdminPermission() throws UserManagerException {
     final UserManager manager = TestUtils.createTestXmlUserManager();
-    final User adminUser = manager.getUser("testAdmin", "testAdmin");
+		final User adminUser = manager.getUser(TestUtils.getTestRequest("testAdmin", "testAdmin"));
     Assert.assertTrue(HttpRequestUtils.hasPermission(manager, adminUser,
         Type.ADMIN));
   }
@@ -108,7 +108,7 @@ public final class HttpRequestUtilsTest {
   @Test
   public void testHasOrdinaryPermission() throws UserManagerException {
     final UserManager manager = TestUtils.createTestXmlUserManager();
-    final User testUser = manager.getUser("testUser", "testUser");
+		final User testUser = manager.getUser(TestUtils.getTestRequest("testUser", "testUser"));
     Assert.assertFalse(HttpRequestUtils.hasPermission(manager, testUser,
         Type.ADMIN));
   }

@@ -43,7 +43,7 @@ import javax.servlet.http.HttpServletRequest;
  * The xml to be in the following form: <azkaban-users> <user username="username" password="azkaban"
  * roles="admin" groups="azkaban"/> </azkaban-users>
  */
-public class XmlUserManager implements UserManager {
+public class XmlSSLCertUserManager implements UserManager {
 
   public static final String XML_FILE_PARAM = "user.manager.xml.file";
   public static final String AZKABAN_USERS_TAG = "azkaban-users";
@@ -72,7 +72,7 @@ public class XmlUserManager implements UserManager {
   /**
    * The constructor.
    */
-  public XmlUserManager(final Props props) {
+  public XmlSSLCertUserManager(final Props props) {
     this.xmlPath = props.getString(XML_FILE_PARAM);
 
     parseXMLFile();
@@ -244,25 +244,33 @@ public class XmlUserManager implements UserManager {
   @Override
   public User getUser(final HttpServletRequest req)
     throws UserManagerException {
-	  
-		// if there's no valid session, see if it's a one time session.
-		if (!HttpRequestUtils.hasParam(req, "username") || !HttpRequestUtils.hasParam(req, "password")) {
-			throw new UserManagerException("Need username and password.");
-		}
-		
-		final String username;
-		final String password;
-	    try {
+
+		final boolean isSSLCertLogin;
+	final String username;
+	final String password;
+    try {
+		if (HttpRequestUtils.hasParam(req, "ssl_client_s_dn_cn")) {
+			// if ssl_client_s_dn_cn exists that means nginx did the authentication
+			// use ssl_client_s_dn_cn as a username password.
+			// if this parameter not exists then fall back to clasc username password authentication(XmlUserManager)
+			username = HttpRequestUtils.getParam(req, "ssl_client_s_dn_cn");
+			password = HttpRequestUtils.getParam(req, "ssl_client_s_dn_cn");
+			isSSLCertLogin=true;
+				logger.info("ssl_client_s_dn_cn found starting SSLCert Authenticaton.");
+		}else if (HttpRequestUtils.hasParam(req, "username") && HttpRequestUtils.hasParam(req, "password")) {
 	    	username = HttpRequestUtils.getParam(req, "username");
 			password = HttpRequestUtils.getParam(req, "password");
-		} catch (Exception e) {
-		      throw new UserManagerException(e.getMessage());
+				isSSLCertLogin = false;
+				logger.info("ssl_client_s_dn_cn Not found! falling back to username password Authenticaton.");
+		}else{
+			throw new UserManagerException("Need username and password.");
 		}
-
-	    if (username == null || username.trim().isEmpty()) {
+	} catch (Exception e) {
+	      throw new UserManagerException(e.getMessage());
+	}
+    
+    if (username == null || username.trim().isEmpty()) {
       throw new UserManagerException("Username is empty.");
-    } else if (password == null || password.trim().isEmpty()) {
-      throw new UserManagerException("Password is empty.");
     }
 
     // Minimize the synchronization of the get. Shouldn't matter if it
@@ -271,12 +279,10 @@ public class XmlUserManager implements UserManager {
     User user = null;
     synchronized (this) {
       foundPassword = this.userPassword.get(username);
-      if (foundPassword != null) {
         user = this.users.get(username);
-      }
     }
 
-    if (foundPassword == null || !foundPassword.equals(password)) {
+    if (isSSLCertLogin==false && (foundPassword == null || !foundPassword.equals(password))) {
       throw new UserManagerException("Username/Password not found.");
     }
     // Once it gets to this point, no exception has been thrown. User

@@ -16,6 +16,9 @@
 
 package azkaban.user;
 
+import javax.servlet.ServletException;
+import javax.servlet.http.HttpServletRequest;
+
 /**
  * Interface for the UserManager. Implementors will have to handle the retrieval of the User object
  * given the username and password.
@@ -29,8 +32,9 @@ public interface UserManager {
    * Retrieves the user given the username and password to authenticate against.
    *
    * @throws UserManagerException If the username/password combination doesn't exist.
+   * @throws ServletException 
    */
-  public User getUser(String username, String password)
+  public User getUser(final HttpServletRequest req)
       throws UserManagerException;
 
   /**

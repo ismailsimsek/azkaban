@@ -8,11 +8,11 @@ import org.junit.Test;
 
 
 public class UserUtilsTest {
-
+	
   @Test
   public void testAdminUserCanUploadProject() throws UserManagerException {
     final UserManager userManager = TestUtils.createTestXmlUserManager();
-    final User testAdmin = userManager.getUser("testAdmin", "testAdmin");
+	final User testAdmin = userManager.getUser(TestUtils.getTestRequest("testAdmin", "testAdmin"));
     assertThat(UserUtils.hasPermissionforAction(userManager, testAdmin, UPLOADPROJECTS)).isTrue();
   }
 
@@ -26,7 +26,7 @@ public class UserUtilsTest {
   @Test
   public void testUserWithPermissionsCanUploadProject() throws UserManagerException {
     final UserManager userManager = TestUtils.createTestXmlUserManager();
-    final User testUpload = userManager.getUser("testUpload", "testUpload");
+    final User testUpload = userManager.getUser(TestUtils.getTestRequest("testUpload", "testUpload"));
     assertThat(UserUtils.hasPermissionforAction(userManager, testUpload, UPLOADPROJECTS)).isTrue();
   }
 }
