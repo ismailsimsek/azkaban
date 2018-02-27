@@ -25,12 +25,12 @@ import azkaban.Constants.ConfigurationKeys;
 import azkaban.database.AzkabanDatabaseSetup;
 import azkaban.executor.ExecutorManager;
 import azkaban.flowtrigger.FlowTriggerService;
+import azkaban.flowtrigger.quartz.FlowTriggerScheduler;
 import azkaban.jmx.JmxExecutorManager;
 import azkaban.jmx.JmxJettyServer;
 import azkaban.jmx.JmxTriggerManager;
 import azkaban.metrics.MetricsManager;
 import azkaban.project.ProjectManager;
-import azkaban.scheduler.QuartzScheduler;
 import azkaban.scheduler.ScheduleManager;
 import azkaban.server.AzkabanServer;
 import azkaban.server.session.SessionCache;
@@ -55,6 +55,7 @@ import azkaban.webapp.plugin.ViewerPlugin;
 import azkaban.webapp.servlet.AbstractAzkabanServlet;
 import azkaban.webapp.servlet.ExecutorServlet;
 import azkaban.webapp.servlet.FlowTriggerInstanceServlet;
+import azkaban.webapp.servlet.FlowTriggerServlet;
 import azkaban.webapp.servlet.HistoryServlet;
 import azkaban.webapp.servlet.IndexRedirectServlet;
 import azkaban.webapp.servlet.JMXHttpServlet;
@@ -143,7 +144,7 @@ public class AzkabanWebServer extends AzkabanServer {
   private final Props props;
   private final SessionCache sessionCache;
   private final List<ObjectName> registeredMBeans = new ArrayList<>();
-  private final QuartzScheduler quartzScheduler;
+  private final FlowTriggerScheduler scheduler;
   private final FlowTriggerService flowTriggerService;
   private Map<String, TriggerPlugin> triggerPlugins;
   private MBeanServer mbeanServer;
@@ -159,7 +160,7 @@ public class AzkabanWebServer extends AzkabanServer {
       final UserManager userManager,
       final ScheduleManager scheduleManager,
       final VelocityEngine velocityEngine,
-      final QuartzScheduler quartzScheduler,
+      final FlowTriggerScheduler scheduler,
       final FlowTriggerService flowTriggerService,
       final StatusService statusService) {
     this.props = requireNonNull(props, "props is null.");
@@ -172,9 +173,9 @@ public class AzkabanWebServer extends AzkabanServer {
     this.userManager = requireNonNull(userManager, "userManager is null.");
     this.scheduleManager = requireNonNull(scheduleManager, "scheduleManager is null.");
     this.velocityEngine = requireNonNull(velocityEngine, "velocityEngine is null.");
-    this.quartzScheduler = requireNonNull(quartzScheduler, "quartzScheduler is null.");
-    this.flowTriggerService = requireNonNull(flowTriggerService, "flowTriggerService is null.");
     this.statusService = statusService;
+    this.scheduler = requireNonNull(scheduler, "scheduler is null.");
+    this.flowTriggerService = requireNonNull(flowTriggerService, "flow trigger service is null");
 
     loadBuiltinCheckersAndActions();
 
@@ -234,12 +235,9 @@ public class AzkabanWebServer extends AzkabanServer {
 
       @Override
       public void run() {
-        try {
-          if (webServer.quartzScheduler != null) {
-            webServer.quartzScheduler.shutdown();
-          }
-        } catch (final Exception e) {
-          logger.error(("Exception while shutting down quartz scheduler."), e);
+        if (webServer.scheduler != null) {
+          logger.info("Shutting down flow trigger scheduler...");
+          webServer.scheduler.shutdown();
         }
 
         try {
@@ -251,17 +249,16 @@ public class AzkabanWebServer extends AzkabanServer {
         }
 
         try {
+          logger.info("Logging top memory consumers...");
           logTopMemoryConsumers();
+
+          logger.info("Shutting down http server...");
+          webServer.close();
+
         } catch (final Exception e) {
-          logger.error(("Exception when logging top memory consumers"), e);
+          logger.error(("Exception while shutting down web server."), e);
         }
 
-        logger.info("Shutting down http server...");
-        try {
-          webServer.close();
-        } catch (final Exception e) {
-          logger.error("Error while shutting down http server.", e);
-        }
         logger.info("kk thx bye.");
       }
 
@@ -458,6 +455,10 @@ public class AzkabanWebServer extends AzkabanServer {
     return this.flowTriggerService;
   }
 
+  public FlowTriggerScheduler getScheduler() {
+    return this.scheduler;
+  }
+
   private void validateDatabaseVersion()
       throws IOException, SQLException {
     final boolean checkDB = this.props
@@ -508,6 +509,7 @@ public class AzkabanWebServer extends AzkabanServer {
     root.addServlet(new ServletHolder(new StatusServlet(this.statusService)), "/status");
     root.addServlet(new ServletHolder(new NoteServlet()), "/notes");
     root.addServlet(new ServletHolder(new FlowTriggerInstanceServlet()), "/flowtriggerinstance");
+    root.addServlet(new ServletHolder(new FlowTriggerServlet()), "/flowtrigger");
 
     final ServletHolder restliHolder = new ServletHolder(new RestliServlet());
     restliHolder.setInitParameter("resourcePackages", "azkaban.restli");
@@ -540,15 +542,12 @@ public class AzkabanWebServer extends AzkabanServer {
     }
 
     if (this.props.getBoolean(ConfigurationKeys.ENABLE_QUARTZ, false)) {
-      this.quartzScheduler.start();
-    }
-
-    if (this.props.getBoolean(ConfigurationKeys.ENABLE_FLOW_TRIGGER, false)) {
-      // flow trigger service throws exception when any dependency plugin fails to be initialized
-      // (e.x if it's kafka dependency and kafka is down). In this case if azkaban admin still
-      // wishes to start azkaban web server, she can disable flow trigger in the az config file and
-      // restart web server so that regular scheduled flows are not affected.
+      // flowTriggerService needs to be started first before scheduler starts to schedule
+      // existing flow triggers
+      logger.info("starting flow trigger service");
       this.flowTriggerService.start();
+      logger.info("starting flow trigger scheduler");
+      this.scheduler.start();
     }
 
     try {
