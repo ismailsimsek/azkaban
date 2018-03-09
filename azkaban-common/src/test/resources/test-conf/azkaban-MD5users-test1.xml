@@ -1,0 +1,13 @@
+<azkaban-users>
+  <user groups="group0" password=305E4F55CE823E111A46A9D500BCB86C roles="role0" username="user0"/>
+  <user groups="group1,group2" password="7C6A180B36896A0A8C02787EEAFB0E4C" roles="role0,role1" username="user1"/>
+  <user groups="group1,group2,group3" password="6CB75F652A9B52798EB6CF2201057C73" roles="role0,role1,role2"
+    username="user2"/>
+  <user groups="group1, group2" password=819B0643D6B89DC9B579FDFC9094F28E roles="role1, role2" username="user3"/>
+  <user groups="group1 , group2" password="34CC93ECE0BA9E3F6F235D4AF979B16C" roles="role1 , role2" username="user4"/>
+  <user groups="group1 , group2," password="DB0EDD04AAAC4506F7EDAB03AC855D56" roles="role1 , role2," username="user5"/>
+  <user groups="group1 , group2, " password="218DD27AEBECCECAE69AD8408D9A36BF" roles="role3 , role2, " username="user6"/>
+  <user groups="group1" password="00CDB7BB942CF6B290CEB97D6ACA64A3" username="user7"/>
+  <user password="B25EF06BE3B6948C0BC431DA46C2C738" roles="role3" username="user8"/>
+  <user password="5D69DD95AC183C9643780ED7027D128A" username="user9"/>
+</azkaban-users>
