@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 LinkedIn Corp.
+ * Copyright 2018 LinkedIn Corp.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
@@ -12,10 +12,11 @@
  * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
  * License for the specific language governing permissions and limitations under
  * the License.
- *
  */
 
 package azkaban;
+
+import java.time.Duration;
 
 /**
  * Constants used in configuration files or shared among classes.
@@ -29,15 +30,29 @@ package azkaban;
  * <p>Flow level properties keys to be put in the {@link FlowProperties} class
  *
  * <p>Job level Properties keys to be put in the {@link JobProperties} class
+ *
+ * <p>Use '.' to separate name spaces and '_" to separate words in the same namespace. e.g.
+ * azkaban.job.some_key</p>
  */
 public class Constants {
 
   // Azkaban Flow Versions
-  public static final String AZKABAN_FLOW_VERSION_2_0 = "2.0";
+  public static final double DEFAULT_AZKABAN_FLOW_VERSION = 1.0;
+  public static final double AZKABAN_FLOW_VERSION_2_0 = 2.0;
 
   // Flow 2.0 file suffix
   public static final String PROJECT_FILE_SUFFIX = ".project";
   public static final String FLOW_FILE_SUFFIX = ".flow";
+
+  // Flow 2.0 node type
+  public static final String NODE_TYPE = "type";
+  public static final String FLOW_NODE_TYPE = "flow";
+
+  // Flow 2.0 flow and job path delimiter
+  public static final String PATH_DELIMITER = ":";
+
+  // Job properties override suffix
+  public static final String JOB_OVERRIDE_SUFFIX = ".jor";
 
   // Names and paths of various file names to configure Azkaban
   public static final String AZKABAN_PROPERTIES_FILE = "azkaban.properties";
@@ -63,7 +78,21 @@ public class Constants {
   // One Schedule's default End Time: 01/01/2050, 00:00:00, UTC
   public static final long DEFAULT_SCHEDULE_END_EPOCH_TIME = 2524608000000L;
 
+  // Default flow trigger max wait time
+  public static final Duration DEFAULT_FLOW_TRIGGER_MAX_WAIT_TIME = Duration.ofDays(10);
+
+  public static final Duration MIN_FLOW_TRIGGER_WAIT_TIME = Duration.ofMinutes(1);
+
+  // The flow exec id for a flow trigger instance which hasn't started a flow yet
+  public static final int UNASSIGNED_EXEC_ID = -1;
+
+  // The flow exec id for a flow trigger instance unable to trigger a flow yet
+  public static final int FAILED_EXEC_ID = -2;
+
   public static class ConfigurationKeys {
+
+    // Configures Azkaban Flow Version in project YAML file
+    public static final String AZKABAN_FLOW_VERSION = "azkaban-flow-version";
 
     // These properties are configurable through azkaban.properties
     public static final String AZKABAN_PID_FILENAME = "azkaban.pid.filename";
@@ -81,6 +110,17 @@ public class Constants {
     // Designates one of the external link topics to correspond to a job log viewer
     public static final String AZKABAN_SERVER_EXTERNAL_LOGVIEWER_TOPIC = "azkaban.server.external.logviewer.topic";
     public static final String AZKABAN_SERVER_EXTERNAL_LOGVIEWER_LABEL = "azkaban.server.external.logviewer.label";
+
+    /*
+     * Hadoop/Spark user job link.
+     * Example:
+     * a) azkaban.server.external.resource_manager_job_url=http://***rm***:8088/cluster/app/application_${application.id}
+     * b) azkaban.server.external.history_server_job_url=http://***jh***:19888/jobhistory/job/job_${application.id}
+     * c) azkaban.server.external.spark_history_server_job_url=http://***sh***:18080/history/application_${application.id}/1/jobs
+     * */
+    public static final String RESOURCE_MANAGER_JOB_URL = "azkaban.server.external.resource_manager_job_url";
+    public static final String HISTORY_SERVER_JOB_URL = "azkaban.server.external.history_server_job_url";
+    public static final String SPARK_HISTORY_SERVER_JOB_URL = "azkaban.server.external.spark_history_server_job_url";
 
     // Configures the Kafka appender for logging user jobs, specified for the exec server
     public static final String AZKABAN_SERVER_LOGGING_KAFKA_BROKERLIST = "azkaban.server.logging.kafka.brokerList";
@@ -118,6 +158,9 @@ public class Constants {
 
     // The property is used for the web server to get the host name of the executor when running in SOLO mode.
     public static final String EXECUTOR_HOST = "executor.host";
+
+    // The property is used for the web server to get the port of the executor when running in SOLO mode.
+    public static final String EXECUTOR_PORT = "executor.port";
 
     // Max flow running time in mins, server will kill flows running longer than this setting.
     // if not set or <= 0, then there's no restriction on running time.
@@ -159,8 +202,36 @@ public class Constants {
      **/
     public static final String AZKABAN_STORAGE_ARTIFACT_MAX_RETENTION = "azkaban.storage.artifact.max.retention";
 
-    // enable Quartz Scheduler if true.
-    public static final String ENABLE_QUARTZ= "azkaban.server.schedule.enable_quartz";
+    // enable quartz scheduler and flow trigger if true.
+    public static final String ENABLE_QUARTZ = "azkaban.server.schedule.enable_quartz";
+
+    public static final String CUSTOM_CREDENTIAL_NAME = "azkaban.security.credential";
+
+    // dir to keep dependency plugins
+    public static final String DEPENDENCY_PLUGIN_DIR = "azkaban.dependency.plugin.dir";
+
+    public static final String USE_MULTIPLE_EXECUTORS = "azkaban.use.multiple.executors";
+    public static final String MAX_CONCURRENT_RUNS_ONEFLOW = "azkaban.max.concurrent.runs.oneflow";
+    public static final String WEBSERVER_QUEUE_SIZE = "azkaban.webserver.queue.size";
+    public static final String ACTIVE_EXECUTOR_REFRESH_IN_MS =
+        "azkaban.activeexecutor.refresh.milisecinterval";
+    public static final String ACTIVE_EXECUTOR_REFRESH_IN_NUM_FLOW =
+        "azkaban.activeexecutor.refresh.flowinterval";
+    public static final String EXECUTORINFO_REFRESH_MAX_THREADS =
+        "azkaban.executorinfo.refresh.maxThreads";
+    public static final String MAX_DISPATCHING_ERRORS_PERMITTED = "azkaban.maxDispatchingErrors";
+    public static final String EXECUTOR_SELECTOR_FILTERS = "azkaban.executorselector.filters";
+    public static final String EXECUTOR_SELECTOR_COMPARATOR_PREFIX =
+        "azkaban.executorselector.comparator.";
+    public static final String QUEUEPROCESSING_ENABLED = "azkaban.queueprocessing.enabled";
+
+    public static final String SESSION_TIME_TO_LIVE = "session.time.to.live";
+
+    // allowed max size of shared project dir in MB
+    public static final String PROJECT_DIR_MAX_SIZE_IN_MB = "azkaban.project_cache_max_size_in_mb";
+
+    // number of rows to be displayed on the executions page.
+    public static final String DISPLAY_EXECUTION_PAGE_SIZE = "azkaban.display.execution_page_size";
   }
 
   public static class FlowProperties {
@@ -196,11 +267,21 @@ public class Constants {
     @Deprecated
     public static final String EXTRA_HCAT_LOCATION = "other_hcat_location";
 
+    // If true, AZ will fetches the jobs' certificate from remote Certificate Authority.
+    public static final String ENABLE_JOB_SSL = "azkaban.job.enable.ssl";
+
     // Job properties that indicate maximum memory size
     public static final String JOB_MAX_XMS = "job.max.Xms";
     public static final String MAX_XMS_DEFAULT = "1G";
     public static final String JOB_MAX_XMX = "job.max.Xmx";
     public static final String MAX_XMX_DEFAULT = "2G";
+    // The hadoop user the job should run under. If not specified, it will default to submit user.
+    public static final String USER_TO_PROXY = "user.to.proxy";
+
+    /**
+     * Format string for Log4j's EnhancedPatternLayout
+     */
+    public static final String JOB_LOG_LAYOUT = "azkaban.job.log.layout";
   }
 
   public static class JobCallbackProperties {
@@ -210,5 +291,18 @@ public class Constants {
     public static final String JOBCALLBACK_SOCKET_TIMEOUT = "jobcallback.socket.timeout";
     public static final String JOBCALLBACK_RESPONSE_WAIT_TIMEOUT = "jobcallback.response.wait.timeout";
     public static final String JOBCALLBACK_THREAD_POOL_SIZE = "jobcallback.thread.pool.size";
+  }
+
+  public static class FlowTriggerProps {
+
+    // Flow trigger props
+    public static final String SCHEDULE_TYPE = "type";
+    public static final String CRON_SCHEDULE_TYPE = "cron";
+    public static final String SCHEDULE_VALUE = "value";
+    public static final String DEP_NAME = "name";
+
+    // Flow trigger dependency run time props
+    public static final String START_TIME = "startTime";
+    public static final String TRIGGER_INSTANCE_ID = "triggerInstanceId";
   }
 }

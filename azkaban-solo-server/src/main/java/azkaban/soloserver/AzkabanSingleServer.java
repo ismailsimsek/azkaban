@@ -31,6 +31,9 @@ import com.google.inject.Guice;
 import com.google.inject.Injector;
 import java.io.File;
 import java.io.IOException;
+import java.security.Permission;
+import java.security.Policy;
+import java.security.ProtectionDomain;
 import javax.inject.Inject;
 import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
@@ -52,6 +55,16 @@ public class AzkabanSingleServer {
 
   public static void main(String[] args) throws Exception {
     log.info("Starting Azkaban Server");
+
+    if (System.getSecurityManager() == null) {
+      Policy.setPolicy(new Policy() {
+        @Override
+        public boolean implies(final ProtectionDomain domain, final Permission permission) {
+          return true; // allow all
+        }
+      });
+      System.setSecurityManager(new SecurityManager());
+    }
 
     if (args.length == 0) {
       args = prepareDefaultConf();
@@ -98,10 +111,11 @@ public class AzkabanSingleServer {
   }
 
   private void launch() throws Exception {
-    AzkabanWebServer.launch(this.webServer);
-    log.info("Azkaban Web Server started...");
-
+    // exec server first so that it's ready to accept calls by web server when web initializes
     AzkabanExecutorServer.launch(this.executor);
     log.info("Azkaban Exec Server started...");
+
+    AzkabanWebServer.launch(this.webServer);
+    log.info("Azkaban Web Server started...");
   }
 }

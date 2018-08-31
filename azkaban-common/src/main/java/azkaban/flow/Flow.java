@@ -16,8 +16,8 @@
 
 package azkaban.flow;
 
+import azkaban.Constants;
 import azkaban.executor.mail.DefaultMailCreator;
-import azkaban.project.AzkabanFlow;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -48,8 +48,8 @@ public class Flow {
   private Map<String, Object> metadata = new HashMap<>();
 
   private boolean isLayedOut = false;
-
-  private AzkabanFlow azkabanFlow;
+  private boolean isEmbeddedFlow = false;
+  private double azkabanFlowVersion = Constants.DEFAULT_AZKABAN_FLOW_VERSION;
 
   public Flow(final String id) {
     this.id = id;
@@ -60,10 +60,21 @@ public class Flow {
 
     final String id = (String) flowObject.get("id");
     final Boolean layedout = (Boolean) flowObject.get("layedout");
+    final Boolean isEmbeddedFlow = (Boolean) flowObject.get("embeddedFlow");
+    final Double azkabanFlowVersion = (Double) flowObject.get("azkabanFlowVersion");
     final Flow flow = new Flow(id);
     if (layedout != null) {
       flow.setLayedOut(layedout);
     }
+
+    if (isEmbeddedFlow != null) {
+      flow.setEmbeddedFlow(isEmbeddedFlow);
+    }
+
+    if (azkabanFlowVersion != null) {
+      flow.setAzkabanFlowVersion(azkabanFlowVersion);
+    }
+
     final int projId = (Integer) flowObject.get("project.id");
     flow.setProjectId(projId);
 
@@ -160,28 +171,31 @@ public class Flow {
         }
       }
 
-      for (final Node node : this.startNodes) {
-        node.setLevel(0);
-        this.numLevels = 0;
-        recursiveSetLevels(node);
-      }
+      setLevelsAndEdgeNodes(new HashSet<>(startNodes), 0);
     }
   }
 
-  private void recursiveSetLevels(final Node node) {
-    final Set<Edge> edges = this.outEdges.get(node.getId());
-    if (edges != null) {
-      for (final Edge edge : edges) {
-        final Node nextNode = this.nodes.get(edge.getTargetId());
-        edge.setSource(node);
-        edge.setTarget(nextNode);
+  private void setLevelsAndEdgeNodes(final Set<Node> levelNodes, int level) {
+    final Set<Node> nextLevelNodes = new HashSet<>();
 
-        // We pick whichever is higher to get the max distance from root.
-        final int level = Math.max(node.getLevel() + 1, nextNode.getLevel());
-        nextNode.setLevel(level);
-        this.numLevels = Math.max(level, this.numLevels);
-        recursiveSetLevels(nextNode);
+    for (Node node : levelNodes) {
+      node.setLevel(level);
+
+      final Set<Edge> edges = outEdges.get(node.getId());
+      if (edges != null) {
+        edges.forEach(edge -> {
+          edge.setSource(node);
+          edge.setTarget(nodes.get(edge.getTargetId()));
+
+          nextLevelNodes.add(edge.getTarget());
+        });
       }
+    }
+
+    numLevels = level;
+
+    if (!nextLevelNodes.isEmpty()) {
+      setLevelsAndEdgeNodes(nextLevelNodes, level + 1);
     }
   }
 
@@ -323,6 +337,8 @@ public class Flow {
     flowObj.put("success.email", this.successEmail);
     flowObj.put("mailCreator", this.mailCreator);
     flowObj.put("layedout", this.isLayedOut);
+    flowObj.put("embeddedFlow", this.isEmbeddedFlow);
+    flowObj.put("azkabanFlowVersion", this.azkabanFlowVersion);
     if (this.errors != null) {
       flowObj.put("errors", this.errors);
     }
@@ -372,6 +388,22 @@ public class Flow {
     this.isLayedOut = layedOut;
   }
 
+  public boolean isEmbeddedFlow() {
+    return this.isEmbeddedFlow;
+  }
+
+  public void setEmbeddedFlow(final boolean embeddedFlow) {
+    this.isEmbeddedFlow = embeddedFlow;
+  }
+
+  public double getAzkabanFlowVersion() {
+    return this.azkabanFlowVersion;
+  }
+
+  public void setAzkabanFlowVersion(final double azkabanFlowVersion) {
+    this.azkabanFlowVersion = azkabanFlowVersion;
+  }
+
   public Map<String, Object> getMetadata() {
     if (this.metadata == null) {
       this.metadata = new HashMap<>();
@@ -411,11 +443,4 @@ public class Flow {
     this.projectId = projectId;
   }
 
-  public AzkabanFlow getAzkabanFlow() {
-    return this.azkabanFlow;
-  }
-
-  public void setAzkabanFlow(final AzkabanFlow azkabanFlow) {
-    this.azkabanFlow = azkabanFlow;
-  }
 }

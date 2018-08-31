@@ -16,18 +16,23 @@
 
 package azkaban.utils;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.comparator.NameFileComparator;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -38,16 +43,46 @@ public class FileIOUtilsTest {
   public TemporaryFolder temp = new TemporaryFolder();
   private File sourceDir, destDir, baseDir;
 
+  /**
+   * Create a very big dir which would cause linux shell command to hard link the dir to
+   * exceed the allowed limit.
+   */
+  private void createBigDir(final String path) throws IOException {
+    final String verylongprefix =
+        "123123123123123123123123123123123113123111111111111111111111111111111111111111111111111111"
+            + "111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
+            + "11231312312312312312313121111111111111111111111111111111111111111111111111";
+
+    for (int i = 1; i <= 400; i++) {
+      final Path tmpDirPath = Paths.get(path, verylongprefix + "dir" + i);
+      Files.createDirectory(tmpDirPath);
+      for (int j = 1; j <= 100; j++) {
+        final Path tmp = Paths.get(tmpDirPath.toAbsolutePath().toString(), String.valueOf(j));
+        Files.createFile(tmp);
+      }
+    }
+  }
+
   @Before
   public void setUp() throws Exception {
     // setup base dir
+
     this.baseDir = this.temp.newFolder("base");
     final File file1 = new File(this.baseDir.getAbsolutePath() + "/a.out");
     final File file2 = new File(this.baseDir.getAbsolutePath() + "/testdir");
     final File file3 = new File(file2.getAbsolutePath() + "/b.out");
+    final File file4 = new File(file2.getAbsolutePath() + "/testdir");
+    final File file5 = new File(file2.getAbsolutePath() + "/c.out");
+    final File file6 = new File(file4.getAbsolutePath() + "/c1.out");
+    final File file7 = new File(file4.getAbsolutePath() + "/c2.out");
+
     file1.createNewFile();
     file2.mkdir();
     file3.createNewFile();
+    file4.mkdir();
+    file5.createNewFile();
+    file6.createNewFile();
+    file7.createNewFile();
 
     byte[] fileData = new byte[]{1, 2, 3};
     FileOutputStream out = new FileOutputStream(file1);
@@ -74,26 +109,57 @@ public class FileIOUtilsTest {
     FileUtils.deleteDirectory(this.destDir);
   }
 
+
+  private File dumpNumberToTempFile(final String fileName, final long num) throws IOException {
+    final File fileToDump = this.temp.newFile(fileName);
+    FileIOUtils.dumpNumberToFile(fileToDump.toPath(), num);
+    return fileToDump;
+  }
+
+  @Test
+  public void testDumpNumberToFileAndReadFromFile() throws IOException {
+    final String fileName = "number";
+    final long num = 94127;
+    final File fileToDump = dumpNumberToTempFile(fileName, num);
+    assertThat(FileIOUtils.readNumberFromFile(fileToDump.toPath())).isEqualTo(num);
+  }
+
+  @Test
+  public void testDumpNumberToExistingFile() throws IOException {
+    final String fileName = "number";
+    final long firstNum = 94127;
+    final long secondNum = 94128;
+    dumpNumberToTempFile(fileName, firstNum);
+    assertThatThrownBy(() -> dumpNumberToTempFile(fileName, secondNum))
+        .isInstanceOf(IOException.class).hasMessageContaining("already exists");
+  }
+
   @Test
   public void testHardlinkCopy() throws IOException {
     FileIOUtils.createDeepHardlink(this.sourceDir, this.destDir);
-    assertTrue(areDirsEqual(this.sourceDir, this.destDir, true));
+    assertThat(areDirsEqual(this.sourceDir, this.destDir, true)).isTrue();
     FileUtils.deleteDirectory(this.destDir);
-    assertTrue(areDirsEqual(this.baseDir, this.sourceDir, true));
+    assertThat(areDirsEqual(this.baseDir, this.sourceDir, true)).isTrue();
+  }
+
+  @Ignore("Slow test (over 30s) - run manually if need to touch createDeepHardlink()")
+  @Test
+  public void testHardlinkCopyOfBigDir() throws IOException {
+    final File bigDir = new File(this.baseDir.getAbsolutePath() + "/bigdir");
+    bigDir.mkdir();
+    createBigDir(bigDir.getAbsolutePath());
+
+    FileIOUtils.createDeepHardlink(bigDir, this.destDir);
+    assertThat(areDirsEqual(this.destDir, bigDir, true)).isTrue();
+    FileUtils.deleteDirectory(bigDir);
+
   }
 
   @Test
   public void testHardlinkCopyNonSource() {
-    boolean exception = false;
-    try {
+    assertThatThrownBy(() -> {
       FileIOUtils.createDeepHardlink(new File(this.sourceDir, "idonotexist"), this.destDir);
-    } catch (final IOException e) {
-      System.out.println(e.getMessage());
-      System.out.println("Handled this case nicely.");
-      exception = true;
-    }
-
-    assertTrue(exception);
+    }).isInstanceOf(IOException.class);
   }
 
   private boolean areDirsEqualUtil(final File file1, final File file2, final boolean isRoot,

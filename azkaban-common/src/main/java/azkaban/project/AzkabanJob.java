@@ -28,16 +28,9 @@ import java.util.List;
  */
 public class AzkabanJob extends AzkabanNode {
 
-  private final String type;
-
   private AzkabanJob(final String name, final String type, final Props props,
-      final List<String> dependsOn) {
-    super(name, props, dependsOn);
-    this.type = type;
-  }
-
-  public String getType() {
-    return this.type;
+      final String condition, final List<String> dependsOn) {
+    super(name, type, props, condition, dependsOn);
   }
 
   public static class AzkabanJobBuilder {
@@ -45,24 +38,30 @@ public class AzkabanJob extends AzkabanNode {
     private String name;
     private String type;
     private Props props;
+    private String condition;
     private List<String> dependsOn;
 
-    public AzkabanJobBuilder setName(final String name) {
+    public AzkabanJobBuilder name(final String name) {
       this.name = name;
       return this;
     }
 
-    public AzkabanJobBuilder setType(final String type) {
+    public AzkabanJobBuilder type(final String type) {
       this.type = type;
       return this;
     }
 
-    public AzkabanJobBuilder setProps(final Props props) {
+    public AzkabanJobBuilder props(final Props props) {
       this.props = props;
       return this;
     }
 
-    public AzkabanJobBuilder setDependsOn(final List<String> dependsOn) {
+    public AzkabanJobBuilder condition(final String condition) {
+      this.condition = condition;
+      return this;
+    }
+
+    public AzkabanJobBuilder dependsOn(final List<String> dependsOn) {
       // A node may or may not have dependencies.
       this.dependsOn = dependsOn == null
           ? Collections.emptyList()
@@ -71,7 +70,7 @@ public class AzkabanJob extends AzkabanNode {
     }
 
     public AzkabanJob build() {
-      return new AzkabanJob(this.name, this.type, this.props, this.dependsOn);
+      return new AzkabanJob(this.name, this.type, this.props, this.condition, this.dependsOn);
     }
   }
 }

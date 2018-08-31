@@ -18,6 +18,7 @@ package azkaban.utils;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.FileInputStream;
@@ -26,8 +27,12 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.StringTokenizer;
@@ -67,6 +72,39 @@ public class FileIOUtils {
     return true;
   }
 
+
+  /**
+   * Dumps a number into a new file.
+   *
+   * @param filePath the target file
+   * @param num the number to dump
+   * @throws IOException if file already exists
+   */
+  public static void dumpNumberToFile(final Path filePath, final long num) throws IOException {
+    try (BufferedWriter writer = Files
+        .newBufferedWriter(filePath, StandardCharsets.UTF_8)) {
+      writer.write(String.valueOf(num));
+    } catch (final IOException e) {
+      logger.error(String.format("Failed to write the number %s to the file %s", num, filePath), e);
+      throw e;
+    }
+  }
+
+  /**
+   * Reads a number from a file.
+   *
+   * @param filePath the target file
+   */
+  public static long readNumberFromFile(final Path filePath)
+      throws IOException, NumberFormatException {
+    final List<String> allLines = Files.readAllLines(filePath);
+    if (!allLines.isEmpty()) {
+      return Long.parseLong(allLines.get(0));
+    } else {
+      throw new NumberFormatException("unable to parse empty file " + filePath.toString());
+    }
+  }
+
   public static String getSourcePathFromClass(final Class<?> containedClass) {
     File file =
         new File(containedClass.getProtectionDomain().getCodeSource()
@@ -86,10 +124,10 @@ public class FileIOUtils {
     }
   }
 
-  /**
-   * Run a unix command that will hard link files and recurse into directories.
-   */
 
+  /**
+   * Hard link files and recurse into directories.
+   */
   public static void createDeepHardlink(final File sourceDir, final File destDir)
       throws IOException {
     if (!sourceDir.exists()) {
@@ -105,51 +143,20 @@ public class FileIOUtils {
     final Set<String> paths = new HashSet<>();
     createDirsFindFiles(sourceDir, sourceDir, destDir, paths);
 
-    final StringBuffer buffer = new StringBuffer();
     for (String path : paths) {
       final File sourceLink = new File(sourceDir, path);
-      path = "." + path;
+      path = destDir + path;
 
-      buffer.append("ln ").append(sourceLink.getAbsolutePath()).append("/*")
-          .append(" ").append(path).append(";");
-    }
-
-    runShellCommand(buffer.toString(), destDir);
-  }
-
-  private static void runShellCommand(final String command, final File workingDir)
-      throws IOException {
-    final ProcessBuilder builder = new ProcessBuilder().command("sh", "-c", command);
-    builder.directory(workingDir);
-
-    // XXX what about stopping threads ??
-    final Process process = builder.start();
-    try {
-      final NullLogger errorLogger = new NullLogger(process.getErrorStream());
-      final NullLogger inputLogger = new NullLogger(process.getInputStream());
-      errorLogger.start();
-      inputLogger.start();
-
-      try {
-        if (process.waitFor() < 0) {
-          // Assume that the error will be in standard out. Otherwise it'll be
-          // in standard in.
-          String errorMessage = errorLogger.getLastMessages();
-          if (errorMessage.isEmpty()) {
-            errorMessage = inputLogger.getLastMessages();
-          }
-
-          throw new IOException(errorMessage);
+      final File[] targetFiles = sourceLink.listFiles();
+      for (final File targetFile : targetFiles) {
+        if (targetFile.isFile()) {
+          final File linkFile = new File(path, targetFile.getName());
+          // NOTE!! If modifying this, you must run this ignored test manually to validate:
+          // FileIOUtilsTest#testHardlinkCopyOfBigDir
+          Files.createLink(linkFile.toPath(), Paths.get(targetFile.getAbsolutePath()));
         }
-      } catch (final InterruptedException e) {
-        logger.error(e);
       }
-    } finally {
-      IOUtils.closeQuietly(process.getInputStream());
-      IOUtils.closeQuietly(process.getOutputStream());
-      IOUtils.closeQuietly(process.getErrorStream());
     }
-
   }
 
   private static void createDirsFindFiles(final File baseDir, final File sourceDir,

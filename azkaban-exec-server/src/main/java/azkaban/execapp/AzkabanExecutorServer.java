@@ -44,12 +44,12 @@ import azkaban.metric.MetricReportManager;
 import azkaban.metric.inmemoryemitter.InMemoryMetricEmitter;
 import azkaban.metrics.MetricsManager;
 import azkaban.server.AzkabanServer;
+import azkaban.utils.FileIOUtils;
 import azkaban.utils.Props;
 import azkaban.utils.StdOutErrRedirect;
 import azkaban.utils.Utils;
 import com.google.inject.Guice;
 import com.google.inject.Injector;
-import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -58,8 +58,10 @@ import java.lang.management.ManagementFactory;
 import java.lang.reflect.Constructor;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.security.Permission;
+import java.security.Policy;
+import java.security.ProtectionDomain;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.TimeZone;
@@ -131,6 +133,17 @@ public class AzkabanExecutorServer {
     StdOutErrRedirect.redirectOutAndErrToLog();
 
     logger.info("Starting Jetty Azkaban Executor...");
+
+    if (System.getSecurityManager() == null) {
+      Policy.setPolicy(new Policy() {
+        @Override
+        public boolean implies(final ProtectionDomain domain, final Permission permission) {
+          return true; // allow all
+        }
+      });
+      System.setSecurityManager(new SecurityManager());
+    }
+
     final Props props = AzkabanServer.loadProps(args);
 
     if (props == null) {
@@ -140,7 +153,7 @@ public class AzkabanExecutorServer {
     }
 
     /* Initialize Guice Injector */
-    final Injector injector = Guice .createInjector (
+    final Injector injector = Guice.createInjector(
         new AzkabanCommonModule(props),
         new AzkabanExecServerModule()
     );
@@ -188,7 +201,7 @@ public class AzkabanExecutorServer {
       public void logTopMemoryConsumers() throws Exception, IOException {
         if (new File("/bin/bash").exists() && new File("/bin/ps").exists()
             && new File("/usr/bin/head").exists()) {
-          logger.info("logging top memeory consumer");
+          logger.info("logging top memory consumer");
 
           final java.lang.ProcessBuilder processBuilder =
               new java.lang.ProcessBuilder("/bin/bash", "-c",
@@ -275,16 +288,9 @@ public class AzkabanExecutorServer {
 
   private void dumpPortToFile() throws IOException {
     // By default this should write to the working directory
-    final String portFile = this.props
+    final String portFileName = this.props
         .getString(Constants.AZKABAN_EXECUTOR_PORT_FILE, AZKABAN_EXECUTOR_PORT_FILENAME);
-    try (BufferedWriter writer = Files
-        .newBufferedWriter(Paths.get(portFile), StandardCharsets.UTF_8)) {
-      writer.write(String.valueOf(getPort()));
-      writer.write("\n");
-    } catch (final IOException e) {
-      logger.error("Failed to write the port number to a file", e);
-      throw e;
-    }
+    FileIOUtils.dumpNumberToFile(Paths.get(portFileName), getPort());
   }
 
   private void configureJobCallback(final Props props) {

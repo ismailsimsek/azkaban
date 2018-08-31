@@ -20,14 +20,18 @@ package azkaban.project;
 import static com.google.common.base.Preconditions.checkArgument;
 
 import azkaban.Constants;
-import azkaban.utils.Props;
+import azkaban.Constants.FlowTriggerProps;
+import com.google.common.base.Preconditions;
 import com.google.common.io.Files;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
+import java.time.Duration;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.quartz.CronExpression;
 import org.yaml.snakeyaml.Yaml;
 
 /**
@@ -35,15 +39,17 @@ import org.yaml.snakeyaml.Yaml;
  */
 public class NodeBeanLoader {
 
-  private static final String NODE_BEAN_TYPE_FLOW = "flow";
-
-  public NodeBean load(final File flowFile) throws FileNotFoundException {
-    checkArgument(flowFile.exists());
+  public NodeBean load(final File flowFile) throws Exception {
+    checkArgument(flowFile != null && flowFile.exists());
     checkArgument(flowFile.getName().endsWith(Constants.FLOW_FILE_SUFFIX));
 
     final NodeBean nodeBean = new Yaml().loadAs(new FileInputStream(flowFile), NodeBean.class);
+    if (nodeBean == null) {
+      throw new ProjectManagerException(
+          "Failed to load flow file " + flowFile.getName() + ". Node bean is null .");
+    }
     nodeBean.setName(getFlowName(flowFile));
-    nodeBean.setType(NODE_BEAN_TYPE_FLOW);
+    nodeBean.setType(Constants.FLOW_NODE_TYPE);
     return nodeBean;
   }
 
@@ -57,7 +63,7 @@ public class NodeBeanLoader {
     }
 
     for (final NodeBean n : nodeBean.getNodes()) {
-      if (!nodeNames.containsAll(n.getDependsOn())) {
+      if (n.getDependsOn() != null && !nodeNames.containsAll(n.getDependsOn())) {
         // Undefined reference to dependent job
         return false;
       }
@@ -67,26 +73,145 @@ public class NodeBeanLoader {
   }
 
   public AzkabanNode toAzkabanNode(final NodeBean nodeBean) {
-    if (nodeBean.getType().equals(NODE_BEAN_TYPE_FLOW)) {
+    if (nodeBean.getType().equals(Constants.FLOW_NODE_TYPE)) {
       return new AzkabanFlow.AzkabanFlowBuilder()
-          .setName(nodeBean.getName())
-          .setProps(new Props(null, nodeBean.getConfig()))
-          .setDependsOn(nodeBean.getDependsOn())
-          .setNodes(
-              nodeBean.getNodes().stream().map(this::toAzkabanNode).collect(Collectors.toList()))
+          .name(nodeBean.getName())
+          .props(nodeBean.getProps())
+          .condition(nodeBean.getCondition())
+          .dependsOn(nodeBean.getDependsOn())
+          .nodes(nodeBean.getNodes().stream().map(this::toAzkabanNode).collect(Collectors.toList()))
+          .flowTrigger(toFlowTrigger(nodeBean.getTrigger()))
           .build();
     } else {
       return new AzkabanJob.AzkabanJobBuilder()
-          .setName(nodeBean.getName())
-          .setProps(new Props(null, nodeBean.getConfig()))
-          .setType(nodeBean.getType())
-          .setDependsOn(nodeBean.getDependsOn())
+          .name(nodeBean.getName())
+          .props(nodeBean.getProps())
+          .condition(nodeBean.getCondition())
+          .type(nodeBean.getType())
+          .dependsOn(nodeBean.getDependsOn())
           .build();
     }
   }
 
+  private void validateSchedule(final FlowTriggerBean flowTriggerBean) {
+    final Map<String, String> scheduleMap = flowTriggerBean.getSchedule();
+
+    Preconditions.checkNotNull(scheduleMap, "flow trigger schedule must not be null");
+
+    Preconditions.checkArgument(
+        scheduleMap.containsKey(FlowTriggerProps.SCHEDULE_TYPE) && scheduleMap.get
+            (FlowTriggerProps.SCHEDULE_TYPE)
+            .equals(FlowTriggerProps.CRON_SCHEDULE_TYPE),
+        "flow trigger schedule type must be cron");
+
+    Preconditions
+        .checkArgument(scheduleMap.containsKey(FlowTriggerProps.SCHEDULE_VALUE) && CronExpression
+                .isValidExpression(scheduleMap.get(FlowTriggerProps.SCHEDULE_VALUE)),
+            "flow trigger schedule value must be a valid cron expression");
+
+    final String cronExpression = scheduleMap.get(FlowTriggerProps.SCHEDULE_VALUE).trim();
+    final String[] cronParts = cronExpression.split("\\s+");
+
+    Preconditions
+        .checkArgument(cronParts[0].equals("0"), "interval of flow trigger schedule has to"
+            + " be larger than 1 min");
+
+    Preconditions.checkArgument(scheduleMap.size() == 2, "flow trigger schedule must "
+        + "contain type and value only");
+  }
+
+  private void validateFlowTriggerBean(final FlowTriggerBean flowTriggerBean) {
+    validateSchedule(flowTriggerBean);
+    validateTriggerDependencies(flowTriggerBean.getTriggerDependencies());
+    validateMaxWaitMins(flowTriggerBean);
+  }
+
+  private void validateMaxWaitMins(final FlowTriggerBean flowTriggerBean) {
+    Preconditions.checkArgument(flowTriggerBean.getTriggerDependencies().isEmpty() ||
+            flowTriggerBean.getMaxWaitMins() != null,
+        "max wait min cannot be null unless no dependency is defined");
+
+    if (flowTriggerBean.getMaxWaitMins() != null) {
+      Preconditions.checkArgument(flowTriggerBean.getMaxWaitMins() >= Constants
+          .MIN_FLOW_TRIGGER_WAIT_TIME.toMinutes(), "max wait min must be at least " + Constants
+          .MIN_FLOW_TRIGGER_WAIT_TIME.toMinutes() + " min(s)");
+    }
+  }
+
+  /**
+   * check uniqueness of dependency.name
+   */
+  private void validateDepNameUniqueness(final List<TriggerDependencyBean> dependencies) {
+    final Set<String> seen = new HashSet<>();
+    for (final TriggerDependencyBean dep : dependencies) {
+      // set.add() returns false when there exists duplicate
+      Preconditions.checkArgument(seen.add(dep.getName()), String.format("duplicate dependency"
+          + ".name %s found, dependency.name should be unique", dep.getName()));
+    }
+  }
+
+  /**
+   * check uniqueness of dependency type and params
+   */
+  private void validateDepDefinitionUniqueness(final List<TriggerDependencyBean> dependencies) {
+    for (int i = 0; i < dependencies.size(); i++) {
+      for (int j = i + 1; j < dependencies.size(); j++) {
+        final boolean duplicateDepDefFound =
+            dependencies.get(i).getType().equals(dependencies.get(j)
+                .getType()) && dependencies.get(i).getParams()
+                .equals(dependencies.get(j).getParams());
+        Preconditions.checkArgument(!duplicateDepDefFound, String.format("duplicate dependency"
+                + "config %s found, dependency config should be unique",
+            dependencies.get(i).getName()));
+      }
+    }
+  }
+
+  /**
+   * validate name and type are present
+   */
+  private void validateNameAndTypeArePresent(final List<TriggerDependencyBean> dependencies) {
+    for (final TriggerDependencyBean dep : dependencies) {
+      Preconditions.checkNotNull(dep.getName(), "dependency name is required");
+      Preconditions.checkNotNull(dep.getType(), "dependency type is required for " + dep.getName());
+    }
+  }
+
+  private void validateTriggerDependencies(final List<TriggerDependencyBean> dependencies) {
+    validateNameAndTypeArePresent(dependencies);
+    validateDepNameUniqueness(dependencies);
+    validateDepDefinitionUniqueness(dependencies);
+    validateDepType(dependencies);
+  }
+
+  private void validateDepType(final List<TriggerDependencyBean> dependencies) {
+    //todo chengren311: validate dependencies are of valid dependency type
+  }
+
+  public FlowTrigger toFlowTrigger(final FlowTriggerBean flowTriggerBean) {
+    if (flowTriggerBean == null) {
+      return null;
+    } else {
+      validateFlowTriggerBean(flowTriggerBean);
+      if (flowTriggerBean.getMaxWaitMins() != null
+          && flowTriggerBean.getMaxWaitMins() > Constants.DEFAULT_FLOW_TRIGGER_MAX_WAIT_TIME
+          .toMinutes()) {
+        flowTriggerBean.setMaxWaitMins(Constants.DEFAULT_FLOW_TRIGGER_MAX_WAIT_TIME.toMinutes());
+      }
+
+      final Duration duration = flowTriggerBean.getMaxWaitMins() == null ? null : Duration
+          .ofMinutes(flowTriggerBean.getMaxWaitMins());
+
+      return new FlowTrigger(
+          new CronSchedule(flowTriggerBean.getSchedule().get(FlowTriggerProps.SCHEDULE_VALUE)),
+          flowTriggerBean.getTriggerDependencies().stream()
+              .map(d -> new FlowTriggerDependency(d.getName(), d.getType(), d.getParams()))
+              .collect(Collectors.toList()), duration);
+    }
+  }
+
   public String getFlowName(final File flowFile) {
-    checkArgument(flowFile.exists());
+    checkArgument(flowFile != null && flowFile.exists());
     checkArgument(flowFile.getName().endsWith(Constants.FLOW_FILE_SUFFIX));
 
     return Files.getNameWithoutExtension(flowFile.getName());

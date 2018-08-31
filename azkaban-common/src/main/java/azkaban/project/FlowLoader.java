@@ -16,8 +16,11 @@
 
 package azkaban.project;
 
+import azkaban.flow.Flow;
 import azkaban.project.validator.ValidationReport;
 import java.io.File;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Interface to load project flows.
@@ -32,4 +35,18 @@ public interface FlowLoader {
    * @return the validation report.
    */
   ValidationReport loadProjectFlow(final Project project, final File projectDir);
+
+  /**
+   * Returns the flow map constructed from the loaded flows.
+   *
+   * @return Map of flow name to Flow.
+   */
+  Map<String, Flow> getFlowMap();
+
+  /**
+   * Returns errors caught when loading flows.
+   *
+   * @return Set of error strings.
+   */
+  Set<String> getErrors();
 }

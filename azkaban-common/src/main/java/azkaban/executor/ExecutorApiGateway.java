@@ -46,14 +46,16 @@ public class ExecutorApiGateway {
 
   Map<String, Object> callWithReference(final ExecutionReference ref, final String action,
       final Pair<String, String>... params) throws ExecutorManagerException {
-    return callWithExecutionId(ref.getHost(), ref.getPort(), action, ref.getExecId(),
+    final Executor executor = ref.getExecutor().get();
+    return callWithExecutionId(executor.getHost(), executor.getPort(), action, ref.getExecId(),
         null, params);
   }
 
   Map<String, Object> callWithReferenceByUser(final ExecutionReference ref,
       final String action, final String user, final Pair<String, String>... params)
       throws ExecutorManagerException {
-    return callWithExecutionId(ref.getHost(), ref.getPort(), action,
+    final Executor executor = ref.getExecutor().get();
+    return callWithExecutionId(executor.getHost(), executor.getPort(), action,
         ref.getExecId(), user, params);
   }
 
@@ -118,10 +120,9 @@ public class ExecutorApiGateway {
     }
 
     @SuppressWarnings("unchecked") final URI uri =
-        ExecutorApiClient.buildUri(host, port, path, true,
-            paramList.toArray(new Pair[0]));
+        ExecutorApiClient.buildUri(host, port, path, true);
 
-    return this.apiClient.httpGet(uri, null);
+    return this.apiClient.httpPost(uri, paramList);
   }
 
 }

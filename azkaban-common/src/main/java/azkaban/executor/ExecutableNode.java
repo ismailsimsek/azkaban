@@ -16,6 +16,7 @@
 
 package azkaban.executor;
 
+import azkaban.flow.ConditionOnJobStatus;
 import azkaban.flow.Node;
 import azkaban.utils.Props;
 import azkaban.utils.PropsUtils;
@@ -28,6 +29,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Base Executable that nodes and flows are based.
@@ -42,11 +44,14 @@ public class ExecutableNode {
   public static final String INNODES_PARAM = "inNodes";
   public static final String OUTNODES_PARAM = "outNodes";
   public static final String TYPE_PARAM = "type";
+  public static final String CONDITION_PARAM = "condition";
+  public static final String CONDITION_ON_JOB_STATUS_PARAM = "conditionOnJobStatus";
   public static final String PROPS_SOURCE_PARAM = "propSource";
   public static final String JOB_SOURCE_PARAM = "jobSource";
   public static final String OUTPUT_PROPS_PARAM = "outputProps";
   public static final String ATTEMPT_PARAM = "attempt";
   public static final String PASTATTEMPTS_PARAM = "pastAttempts";
+  private final AtomicInteger attempt = new AtomicInteger(0);
   private String id;
   private String type = null;
   private volatile Status status = Status.READY;
@@ -54,7 +59,6 @@ public class ExecutableNode {
   private volatile long endTime = -1;
   private long updateTime = -1;
   private volatile boolean killedBySLA = false;
-
   // Path to Job File
   private String jobSource;
   // Path to top level props file
@@ -63,9 +67,10 @@ public class ExecutableNode {
   private Set<String> outNodes = new HashSet<>();
   private Props inputProps;
   private Props outputProps;
-  private int attempt = 0;
   private long delayExecution = 0;
   private ArrayList<ExecutionAttempt> pastAttempts = null;
+  private String condition;
+  private ConditionOnJobStatus conditionOnJobStatus = ConditionOnJobStatus.ALL_SUCCESS;
 
   // Transient. These values aren't saved, but rediscovered.
   private ExecutableFlowBase parentFlow;
@@ -77,16 +82,20 @@ public class ExecutableNode {
   }
 
   public ExecutableNode(final Node node, final ExecutableFlowBase parent) {
-    this(node.getId(), node.getType(), node.getJobSource(), node
+    this(node.getId(), node.getType(), node.getCondition(), node.getConditionOnJobStatus(), node
+        .getJobSource(), node
         .getPropsSource(), parent);
   }
 
-  public ExecutableNode(final String id, final String type, final String jobSource,
+  public ExecutableNode(final String id, final String type, final String condition,
+      final ConditionOnJobStatus conditionOnJobStatus, final String jobSource,
       final String propsSource, final ExecutableFlowBase parent) {
     this.id = id;
     this.jobSource = jobSource;
     this.propsSource = propsSource;
     this.type = type;
+    this.condition = condition;
+    this.conditionOnJobStatus = conditionOnJobStatus;
     setParentFlow(parent);
   }
 
@@ -226,16 +235,12 @@ public class ExecutableNode {
   }
 
   public int getAttempt() {
-    return this.attempt;
-  }
-
-  public void setAttempt(final int attempt) {
-    this.attempt = attempt;
+    return this.attempt.get();
   }
 
   public void resetForRetry() {
-    final ExecutionAttempt pastAttempt = new ExecutionAttempt(this.attempt, this);
-    this.attempt++;
+    final ExecutionAttempt pastAttempt = new ExecutionAttempt(this.attempt.get(), this);
+    this.attempt.incrementAndGet();
 
     synchronized (this) {
       if (this.pastAttempts == null) {
@@ -288,6 +293,10 @@ public class ExecutableNode {
     objMap.put(ENDTIME_PARAM, this.endTime);
     objMap.put(UPDATETIME_PARAM, this.updateTime);
     objMap.put(TYPE_PARAM, this.type);
+    objMap.put(CONDITION_PARAM, this.condition);
+    if (this.conditionOnJobStatus != null) {
+      objMap.put(CONDITION_ON_JOB_STATUS_PARAM, this.conditionOnJobStatus.toString());
+    }
     objMap.put(ATTEMPT_PARAM, this.attempt);
 
     if (this.inNodes != null && !this.inNodes.isEmpty()) {
@@ -322,11 +331,14 @@ public class ExecutableNode {
       final TypedMapWrapper<String, Object> wrappedMap) {
     this.id = wrappedMap.getString(ID_PARAM);
     this.type = wrappedMap.getString(TYPE_PARAM);
+    this.condition = wrappedMap.getString(CONDITION_PARAM);
+    this.conditionOnJobStatus = ConditionOnJobStatus.fromString(wrappedMap.getString
+        (CONDITION_ON_JOB_STATUS_PARAM));
     this.status = Status.valueOf(wrappedMap.getString(STATUS_PARAM));
     this.startTime = wrappedMap.getLong(STARTTIME_PARAM);
     this.endTime = wrappedMap.getLong(ENDTIME_PARAM);
     this.updateTime = wrappedMap.getLong(UPDATETIME_PARAM);
-    this.attempt = wrappedMap.getInt(ATTEMPT_PARAM, 0);
+    this.attempt.set(wrappedMap.getInt(ATTEMPT_PARAM, 0));
 
     this.inNodes = new HashSet<>();
     this.inNodes.addAll(wrappedMap.getStringCollection(INNODES_PARAM,
@@ -395,8 +407,8 @@ public class ExecutableNode {
     this.endTime = updateData.getLong(ENDTIME_PARAM);
 
     if (updateData.containsKey(ATTEMPT_PARAM)) {
-      this.attempt = updateData.getInt(ATTEMPT_PARAM);
-      if (this.attempt > 0) {
+      this.attempt.set(updateData.getInt(ATTEMPT_PARAM));
+      if (this.attempt.get() > 0) {
         updatePastAttempts(updateData.<Object>getList(PASTATTEMPTS_PARAM,
             Collections.<Object>emptyList()));
       }
@@ -457,5 +469,22 @@ public class ExecutableNode {
 
   public long getRetryBackoff() {
     return this.inputProps.getLong("retry.backoff", 0);
+  }
+
+  public String getCondition() {
+    return this.condition;
+  }
+
+  public void setCondition(final String condition) {
+    this.condition = condition;
+  }
+
+  public ConditionOnJobStatus getConditionOnJobStatus() {
+    return this.conditionOnJobStatus == null ? ConditionOnJobStatus.ALL_SUCCESS
+        : this.conditionOnJobStatus;
+  }
+
+  public void setConditionOnJobStatus(final ConditionOnJobStatus conditionOnJobStatus) {
+    this.conditionOnJobStatus = conditionOnJobStatus;
   }
 }

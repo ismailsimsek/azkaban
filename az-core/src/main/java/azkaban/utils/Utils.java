@@ -199,6 +199,12 @@ public class Utils {
     while (entries.hasMoreElements()) {
       final ZipEntry entry = (ZipEntry) entries.nextElement();
       final File newFile = new File(dest, entry.getName());
+      if (!newFile.getCanonicalPath().startsWith(dest.getCanonicalPath())) {
+        throw new IOException(
+            "Extracting zip entry would have resulted in a file outside the specified destination"
+                + " directory.");
+      }
+
       if (entry.isDirectory()) {
         newFile.mkdirs();
       } else {
@@ -224,7 +230,7 @@ public class Utils {
     final StringBuffer buffer = new StringBuffer();
     for (final Object obj : collection) {
       buffer.append(obj.toString());
-      buffer.append(',');
+      buffer.append(delimiter);
     }
 
     if (buffer.length() > 0) {
@@ -506,4 +512,5 @@ public class Utils {
     }
     return true;
   }
+
 }

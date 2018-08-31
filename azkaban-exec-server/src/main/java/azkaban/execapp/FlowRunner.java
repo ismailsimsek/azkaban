@@ -17,7 +17,13 @@
 package azkaban.execapp;
 
 import static azkaban.Constants.ConfigurationKeys.AZKABAN_SERVER_HOST_NAME;
+import static azkaban.execapp.ConditionalWorkflowUtils.FAILED;
+import static azkaban.execapp.ConditionalWorkflowUtils.PENDING;
+import static azkaban.execapp.ConditionalWorkflowUtils.checkConditionOnJobStatus;
+import static azkaban.project.DirectoryYamlFlowLoader.CONDITION_VARIABLE_REPLACEMENT_PATTERN;
 
+import azkaban.Constants;
+import azkaban.Constants.JobProperties;
 import azkaban.ServiceProvider;
 import azkaban.event.Event;
 import azkaban.event.EventData;
@@ -36,11 +42,13 @@ import azkaban.executor.ExecutionOptions.FailureAction;
 import azkaban.executor.ExecutorLoader;
 import azkaban.executor.ExecutorManagerException;
 import azkaban.executor.Status;
+import azkaban.flow.ConditionOnJobStatus;
 import azkaban.flow.FlowProps;
 import azkaban.flow.FlowUtils;
 import azkaban.jobExecutor.ProcessJob;
 import azkaban.jobtype.JobTypeManager;
 import azkaban.metric.MetricReportManager;
+import azkaban.project.FlowLoaderUtils;
 import azkaban.project.ProjectLoader;
 import azkaban.project.ProjectManagerException;
 import azkaban.sla.SlaOption;
@@ -48,9 +56,15 @@ import azkaban.spi.AzkabanEventReporter;
 import azkaban.spi.EventType;
 import azkaban.utils.Props;
 import azkaban.utils.SwapQueue;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.io.Files;
 import java.io.File;
 import java.io.IOException;
+import java.security.AccessControlContext;
+import java.security.AccessController;
+import java.security.PrivilegedExceptionAction;
+import java.security.ProtectionDomain;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -63,6 +77,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.regex.Matcher;
+import javax.script.ScriptEngine;
+import javax.script.ScriptEngineManager;
+import javax.script.ScriptException;
+import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Appender;
 import org.apache.log4j.FileAppender;
 import org.apache.log4j.Layout;
@@ -206,7 +225,9 @@ public class FlowRunner extends EventHandler implements Runnable {
       this.logger.info("Updating initial flow directory.");
       updateFlow();
       this.logger.info("Fetching job and shared properties.");
-      loadAllProperties();
+      if (!FlowLoaderUtils.isAzkabanFlowVersion20(this.flow.getAzkabanFlowVersion())) {
+        loadAllProperties();
+      }
 
       this.fireEventListeners(
           Event.create(this, EventType.FLOW_STARTED, new EventData(this.getExecutableFlow())));
@@ -248,11 +269,19 @@ public class FlowRunner extends EventHandler implements Runnable {
     // Add a bunch of common azkaban properties
     Props commonFlowProps = FlowUtils.addCommonFlowProperties(null, this.flow);
 
-    if (this.flow.getJobSource() != null) {
-      final String source = this.flow.getJobSource();
-      final Props flowProps = this.sharedProps.get(source);
-      flowProps.setParent(commonFlowProps);
-      commonFlowProps = flowProps;
+    if (FlowLoaderUtils.isAzkabanFlowVersion20(this.flow.getAzkabanFlowVersion())) {
+      final Props flowProps = loadPropsFromYamlFile(this.flow.getId());
+      if (flowProps != null) {
+        flowProps.setParent(commonFlowProps);
+        commonFlowProps = flowProps;
+      }
+    } else {
+      if (this.flow.getJobSource() != null) {
+        final String source = this.flow.getJobSource();
+        final Props flowProps = this.sharedProps.get(source);
+        flowProps.setParent(commonFlowProps);
+        commonFlowProps = flowProps;
+      }
     }
 
     // If there are flow overrides, we apply them now.
@@ -437,21 +466,17 @@ public class FlowRunner extends EventHandler implements Runnable {
         // The job cannot be retried or has run out of retry attempts. We will
         // fail the job and its flow now.
         if (!retryJobIfPossible(node)) {
-          propagateStatus(node.getParentFlow(),
-              node.getStatus() == Status.KILLED ? Status.KILLED : Status.FAILED_FINISHING);
-          if (this.failureAction == FailureAction.CANCEL_ALL) {
-            this.kill();
-          }
-          this.flowFailed = true;
+          setFlowFailed(node);
         } else {
           nodesToCheck.add(node);
           continue;
         }
       }
 
-      if (outNodeIds.isEmpty()) {
-        // There's no outnodes means it's the end of a flow, so we finalize
-        // and fire an event.
+      if (outNodeIds.isEmpty() && isFlowReadytoFinalize(parentFlow)) {
+        // Todo jamiesjc: For conditional workflows, if conditionOnJobStatus is ONE_SUCCESS or
+        // ONE_FAILED, some jobs might still be running when the end nodes have finished. In this
+        // case, we need to kill all running jobs before finalizing the flow.
         finalizeFlow(parentFlow);
         finishExecutableNode(parentFlow);
 
@@ -490,6 +515,31 @@ public class FlowRunner extends EventHandler implements Runnable {
     }
 
     return false;
+  }
+
+  private void setFlowFailed(final ExecutableNode node) {
+    boolean shouldFail = true;
+    // As long as there is no outNodes or at least one outNode has conditionOnJobStatus of
+    // ALL_SUCCESS, we should set the flow to failed. Otherwise, it could still statisfy the
+    // condition of conditional workflows, so don't set the flow to failed.
+    for (final String outNodeId : node.getOutNodes()) {
+      if (node.getParentFlow().getExecutableNode(outNodeId).getConditionOnJobStatus()
+          .equals(ConditionOnJobStatus.ALL_SUCCESS)) {
+        shouldFail = true;
+        break;
+      } else {
+        shouldFail = false;
+      }
+    }
+
+    if (shouldFail) {
+      propagateStatus(node.getParentFlow(),
+          node.getStatus() == Status.KILLED ? Status.KILLED : Status.FAILED_FINISHING);
+      if (this.failureAction == FailureAction.CANCEL_ALL) {
+        this.kill();
+      }
+      this.flowFailed = true;
+    }
   }
 
   private boolean notReadyToRun(final Status status) {
@@ -575,6 +625,16 @@ public class FlowRunner extends EventHandler implements Runnable {
     fireEventListeners(Event.create(this, EventType.JOB_FINISHED, eventData));
   }
 
+  private boolean isFlowReadytoFinalize(final ExecutableFlowBase flow) {
+    // Only when all the end nodes are finished, the flow is ready to finalize.
+    for (final String end : flow.getEndNodes()) {
+      if (!Status.isStatusFinished(flow.getExecutableNode(end).getStatus())) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   private void finalizeFlow(final ExecutableFlowBase flow) {
     final String id = flow == this.flow ? "" : flow.getNestedId();
 
@@ -646,13 +706,16 @@ public class FlowRunner extends EventHandler implements Runnable {
     }
 
     Props props = null;
-    // 1. Shared properties (i.e. *.properties) for the jobs only. This takes
-    // the
-    // least precedence
-    if (!(node instanceof ExecutableFlowBase)) {
-      final String sharedProps = node.getPropsSource();
-      if (sharedProps != null) {
-        props = this.sharedProps.get(sharedProps);
+
+    if (!FlowLoaderUtils.isAzkabanFlowVersion20(this.flow.getAzkabanFlowVersion())) {
+      // 1. Shared properties (i.e. *.properties) for the jobs only. This takes
+      // the
+      // least precedence
+      if (!(node instanceof ExecutableFlowBase)) {
+        final String sharedProps = node.getPropsSource();
+        if (sharedProps != null) {
+          props = this.sharedProps.get(sharedProps);
+        }
       }
     }
 
@@ -693,42 +756,90 @@ public class FlowRunner extends EventHandler implements Runnable {
 
   private Props loadJobProps(final ExecutableNode node) throws IOException {
     Props props = null;
-    final String source = node.getJobSource();
-    if (source == null) {
-      return null;
-    }
+    if (FlowLoaderUtils.isAzkabanFlowVersion20(this.flow.getAzkabanFlowVersion())) {
+      final String jobPath =
+          node.getParentFlow().getFlowId() + Constants.PATH_DELIMITER + node.getId();
+      props = loadPropsFromYamlFile(jobPath);
+      if (props == null) {
+        this.logger.info("Job props loaded from yaml file is empty for job " + node.getId());
+        return props;
+      }
+    } else {
+      final String source = node.getJobSource();
+      if (source == null) {
+        return null;
+      }
 
-    // load the override props if any
-    try {
-      props =
-          this.projectLoader.fetchProjectProperty(this.flow.getProjectId(),
-              this.flow.getVersion(), node.getId() + ".jor");
-    } catch (final ProjectManagerException e) {
-      e.printStackTrace();
-      this.logger.error("Error loading job override property for job "
-          + node.getId());
-    }
-
-    final File path = new File(this.execDir, source);
-    if (props == null) {
-      // if no override prop, load the original one on disk
+      // load the override props if any
       try {
-        props = new Props(null, path);
-      } catch (final IOException e) {
+        props =
+            this.projectLoader.fetchProjectProperty(this.flow.getProjectId(),
+                this.flow.getVersion(), node.getId() + Constants.JOB_OVERRIDE_SUFFIX);
+      } catch (final ProjectManagerException e) {
         e.printStackTrace();
-        this.logger.error("Error loading job file " + source + " for job "
+        this.logger.error("Error loading job override property for job "
             + node.getId());
       }
-    }
-    // setting this fake source as this will be used to determine the location
-    // of log files.
-    if (path.getPath() != null) {
-      props.setSource(path.getPath());
+
+      final File path = new File(this.execDir, source);
+      if (props == null) {
+        // if no override prop, load the original one on disk
+        try {
+          props = new Props(null, path);
+        } catch (final IOException e) {
+          e.printStackTrace();
+          this.logger.error("Error loading job file " + source + " for job "
+              + node.getId());
+        }
+      }
+      // setting this fake source as this will be used to determine the location
+      // of log files.
+      if (path.getPath() != null) {
+        props.setSource(path.getPath());
+      }
     }
 
     customizeJobProperties(props);
 
     return props;
+  }
+
+  private Props loadPropsFromYamlFile(final String path) {
+    File tempDir = null;
+    Props props = null;
+    try {
+      tempDir = Files.createTempDir();
+      props = FlowLoaderUtils.getPropsFromYamlFile(path, getFlowFile(tempDir));
+    } catch (final Exception e) {
+      this.logger.error("Failed to get props from flow file. " + e);
+    } finally {
+      if (tempDir != null && tempDir.exists()) {
+        try {
+          FileUtils.deleteDirectory(tempDir);
+        } catch (final IOException e) {
+          this.logger.error("Failed to delete temp directory." + e);
+          tempDir.deleteOnExit();
+        }
+      }
+    }
+    return props;
+  }
+
+  private File getFlowFile(final File tempDir) throws Exception {
+    final List<FlowProps> flowPropsList = ImmutableList.copyOf(this.flow.getFlowProps());
+    // There should be exact one source (file name) for each flow file.
+    if (flowPropsList.isEmpty() || flowPropsList.get(0) == null) {
+      throw new ProjectManagerException(
+          "Failed to get flow file source. Flow props is empty for " + this.flow.getId());
+    }
+    final String source = flowPropsList.get(0).getSource();
+    final int flowVersion = this.projectLoader
+        .getLatestFlowVersion(this.flow.getProjectId(), this.flow.getVersion(), source);
+    final File flowFile = this.projectLoader
+        .getUploadedFlowFile(this.flow.getProjectId(), this.flow.getVersion(), source,
+            flowVersion, tempDir);
+
+    return flowFile;
   }
 
   @SuppressWarnings("FutureReturnValueIgnored")
@@ -762,19 +873,22 @@ public class FlowRunner extends EventHandler implements Runnable {
     // Go through the node's dependencies. If all of the previous job's
     // statuses is finished and not FAILED or KILLED, than we can safely
     // run this job.
-    final ExecutableFlowBase flow = node.getParentFlow();
-    boolean shouldKill = false;
-    for (final String dependency : node.getInNodes()) {
-      final ExecutableNode dependencyNode = flow.getExecutableNode(dependency);
-      final Status depStatus = dependencyNode.getStatus();
+    Status status = Status.READY;
 
-      if (!Status.isStatusFinished(depStatus)) {
+    // Check if condition on job status is satisfied
+    switch (checkConditionOnJobStatus(node)) {
+      case FAILED:
+        status = Status.CANCELLED;
+        break;
+      // Condition not satisfied yet, need to wait
+      case PENDING:
         return null;
-      } else if (depStatus == Status.FAILED || depStatus == Status.CANCELLED
-          || depStatus == Status.KILLED) {
-        // We propagate failures as KILLED states.
-        shouldKill = true;
-      }
+      default:
+        break;
+    }
+
+    if (!isConditionOnRuntimeVariableMet(node)) {
+      status = Status.CANCELLED;
     }
 
     // If it's disabled but ready to run, we want to make sure it continues
@@ -790,12 +904,78 @@ public class FlowRunner extends EventHandler implements Runnable {
     if (this.flowFailed
         && this.failureAction == ExecutionOptions.FailureAction.FINISH_CURRENTLY_RUNNING) {
       return Status.CANCELLED;
-    } else if (shouldKill || isKilled()) {
+    } else if (isKilled()) {
       return Status.CANCELLED;
     }
 
-    // All good to go, ready to run.
-    return Status.READY;
+    return status;
+  }
+
+  private Boolean isConditionOnRuntimeVariableMet(final ExecutableNode node) {
+    final String condition = node.getCondition();
+    if (condition == null) {
+      return true;
+    }
+
+    final Matcher matcher = CONDITION_VARIABLE_REPLACEMENT_PATTERN.matcher(condition);
+    String replaced = condition;
+
+    while (matcher.find()) {
+      final String value = findValueForJobVariable(node, matcher.group(1), matcher.group(2));
+      if (value != null) {
+        replaced = replaced.replace(matcher.group(), "'" + value + "'");
+      }
+      this.logger.info("Condition is " + replaced);
+    }
+
+    // Evaluate string expression using script engine
+    return evaluateExpression(replaced);
+  }
+
+  private String findValueForJobVariable(final ExecutableNode node, final String jobName, final
+  String variable) {
+    // Get job output props
+    final ExecutableNode target = node.getParentFlow().getExecutableNode(jobName);
+    if (target == null) {
+      this.logger.error("Not able to load props from output props file, job name " + jobName
+          + " might be invalid.");
+      return null;
+    }
+
+    final Props outputProps = target.getOutputProps();
+    if (outputProps != null && outputProps.containsKey(variable)) {
+      return outputProps.get(variable);
+    }
+
+    return null;
+  }
+
+  private boolean evaluateExpression(final String expression) {
+    boolean result = false;
+    final ScriptEngineManager sem = new ScriptEngineManager();
+    final ScriptEngine se = sem.getEngineByName("JavaScript");
+
+    // Restrict permission using the two-argument form of doPrivileged()
+    try {
+      final Object object = AccessController.doPrivileged(
+          new PrivilegedExceptionAction<Object>() {
+            @Override
+            public Object run() throws ScriptException {
+              return se.eval(expression);
+            }
+          },
+          new AccessControlContext(
+              new ProtectionDomain[]{new ProtectionDomain(null, null)}) // no permissions
+      );
+      if (object != null) {
+        result = (boolean) object;
+      }
+    } catch (final Exception e) {
+      this.logger.error("Failed to evaluate the expression.", e);
+    }
+
+    this.logger.info("Evaluate expression result: " + result);
+    return result;
   }
 
   private Props collectOutputProps(final ExecutableNode node) {
@@ -1175,7 +1355,7 @@ public class FlowRunner extends EventHandler implements Runnable {
       metaData.put("jobType", String.valueOf(node.getType()));
       metaData.put("azkabanHost", props.getString(AZKABAN_SERVER_HOST_NAME, "unknown"));
       metaData.put("jobProxyUser",
-          jobRunner.getProps().getString("user.to.proxy", null));
+          jobRunner.getProps().getString(JobProperties.USER_TO_PROXY, null));
       return metaData;
     }
 

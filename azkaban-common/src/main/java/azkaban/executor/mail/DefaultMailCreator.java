@@ -17,13 +17,15 @@
 package azkaban.executor.mail;
 
 import azkaban.executor.ExecutableFlow;
+import azkaban.executor.ExecutableNode;
 import azkaban.executor.ExecutionOptions;
 import azkaban.executor.ExecutionOptions.FailureAction;
+import azkaban.executor.Status;
 import azkaban.utils.EmailMessage;
-import azkaban.utils.Emailer;
 import azkaban.utils.Utils;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -59,6 +61,16 @@ public class DefaultMailCreator implements MailCreator {
     } else {
       return DATE_FORMATTER.format(new Date(timeInMS));
     }
+  }
+
+  private static List<String> findFailedJobs(final ExecutableFlow flow) {
+    final ArrayList<String> failedJobs = new ArrayList<>();
+    for (final ExecutableNode node : flow.getExecutableNodes()) {
+      if (node.getStatus() == Status.FAILED) {
+        failedJobs.add(node.getId());
+      }
+    }
+    return failedJobs;
   }
 
   @Override
@@ -110,7 +122,7 @@ public class DefaultMailCreator implements MailCreator {
 
       message.println("");
       message.println("<h3>Reason</h3>");
-      final List<String> failedJobs = Emailer.findFailedJobs(flow);
+      final List<String> failedJobs = findFailedJobs(flow);
       message.println("<ul>");
       for (final String jobId : failedJobs) {
         message.println("<li><a href=\"" + executionUrl + "&job=" + jobId
@@ -125,9 +137,9 @@ public class DefaultMailCreator implements MailCreator {
   }
 
   @Override
-  public boolean createErrorEmail(final ExecutableFlow flow, final EmailMessage message,
-      final String azkabanName, final String scheme, final String clientHostname,
-      final String clientPortNumber, final String... vars) {
+  public boolean createErrorEmail(final ExecutableFlow flow, final List<ExecutableFlow>
+      pastExecutions, final EmailMessage message, final String azkabanName, final String scheme,
+      final String clientHostname, final String clientPortNumber, final String... vars) {
 
     final ExecutionOptions option = flow.getExecutionOptions();
 
@@ -162,7 +174,7 @@ public class DefaultMailCreator implements MailCreator {
 
       message.println("");
       message.println("<h3>Reason</h3>");
-      final List<String> failedJobs = Emailer.findFailedJobs(flow);
+      final List<String> failedJobs = findFailedJobs(flow);
       message.println("<ul>");
       for (final String jobId : failedJobs) {
         message.println("<li><a href=\"" + executionUrl + "&job=" + jobId
@@ -173,6 +185,30 @@ public class DefaultMailCreator implements MailCreator {
       }
 
       message.println("</ul>");
+
+      message.println("");
+
+      int failedCount = 0;
+      for (final ExecutableFlow executableFlow : pastExecutions) {
+        if (executableFlow.getStatus().equals(Status.FAILED)) {
+          failedCount++;
+        }
+      }
+
+      message.println(String.format("<h3>Executions from past 72 hours (%s out %s) failed</h3>",
+          failedCount, pastExecutions.size()));
+      for (final ExecutableFlow executableFlow : pastExecutions) {
+        message.println("<table>");
+        message.println(
+            "<tr><td>Execution Id</td><td>" + (executableFlow.getExecutionId()) + "</td></tr>");
+        message.println("<tr><td>Start Time</td><td>"
+            + convertMSToString(executableFlow.getStartTime()) + "</td></tr>");
+        message.println("<tr><td>End Time</td><td>"
+            + convertMSToString(executableFlow.getEndTime()) + "</td></tr>");
+        message.println("<tr><td>Status</td><td>" + executableFlow.getStatus() + "</td></tr>");
+        message.println("</table>");
+      }
+
       return true;
     }
     return false;

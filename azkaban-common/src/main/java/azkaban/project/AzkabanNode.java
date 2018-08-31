@@ -28,12 +28,18 @@ import java.util.List;
 public abstract class AzkabanNode {
 
   protected final String name;
+  protected final String type;
   protected final Props props;
+  protected final String condition;
   protected final List<String> dependsOn;
 
-  public AzkabanNode(final String name, final Props props, final List<String> dependsOn) {
+  public AzkabanNode(final String name, final String type, final Props props, final String
+      condition, final List<String>
+      dependsOn) {
     this.name = requireNonNull(name);
+    this.type = requireNonNull(type);
     this.props = requireNonNull(props);
+    this.condition = condition;
     this.dependsOn = dependsOn;
   }
 
@@ -41,8 +47,16 @@ public abstract class AzkabanNode {
     return this.name;
   }
 
+  public String getType() {
+    return this.type;
+  }
+
   public Props getProps() {
     return this.props;
+  }
+
+  public String getCondition() {
+    return this.condition;
   }
 
   public List<String> getDependsOn() {

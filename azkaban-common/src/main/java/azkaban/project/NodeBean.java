@@ -17,6 +17,8 @@
 
 package azkaban.project;
 
+import azkaban.Constants;
+import azkaban.utils.Props;
 import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
@@ -30,7 +32,9 @@ public class NodeBean implements Serializable {
   private Map<String, String> config;
   private List<String> dependsOn;
   private String type;
+  private String condition;
   private List<NodeBean> nodes;
+  private FlowTriggerBean trigger;
 
   public String getName() {
     return this.name;
@@ -64,12 +68,34 @@ public class NodeBean implements Serializable {
     this.type = type;
   }
 
+  public String getCondition() {
+    return this.condition;
+  }
+
+  public void setCondition(final String condition) {
+    this.condition = condition;
+  }
+
   public List<NodeBean> getNodes() {
     return this.nodes;
   }
 
   public void setNodes(final List<NodeBean> nodes) {
     this.nodes = nodes;
+  }
+
+  public Props getProps() {
+    final Props props = new Props(null, this.getConfig());
+    props.put(Constants.NODE_TYPE, this.getType());
+    return props;
+  }
+
+  public FlowTriggerBean getTrigger() {
+    return this.trigger;
+  }
+
+  public void setTrigger(final FlowTriggerBean trigger) {
+    this.trigger = trigger;
   }
 
   @Override
@@ -79,7 +105,9 @@ public class NodeBean implements Serializable {
         ", config=" + this.config +
         ", dependsOn=" + this.dependsOn +
         ", type='" + this.type + '\'' +
+        ", condition='" + this.condition + '\'' +
         ", nodes=" + this.nodes +
+        ", trigger=" + this.trigger +
         '}';
   }
 }

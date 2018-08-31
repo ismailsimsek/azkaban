@@ -16,21 +16,17 @@
 
 package azkaban.project;
 
-import azkaban.Constants;
 import azkaban.flow.CommonJobProperties;
 import azkaban.flow.Edge;
 import azkaban.flow.Flow;
 import azkaban.flow.FlowProps;
 import azkaban.flow.Node;
 import azkaban.flow.SpecialJobTypes;
-import azkaban.jobcallback.JobCallbackValidator;
+import azkaban.project.FlowLoaderUtils.DirFilter;
 import azkaban.project.FlowLoaderUtils.SuffixFilter;
 import azkaban.project.validator.ValidationReport;
 import azkaban.utils.Props;
-import azkaban.utils.PropsUtils;
-import azkaban.utils.Utils;
 import java.io.File;
-import java.io.FileFilter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -47,11 +43,8 @@ import org.slf4j.LoggerFactory;
  */
 public class DirectoryFlowLoader implements FlowLoader {
 
-  private static final DirFilter DIR_FILTER = new DirFilter();
   private static final String PROPERTY_SUFFIX = ".properties";
   private static final String JOB_SUFFIX = ".job";
-  private static final String XMS = "Xms";
-  private static final String XMX = "Xmx";
 
   private static final Logger logger = LoggerFactory.getLogger(DirectoryFlowLoader.class);
   private final Props props;
@@ -83,6 +76,7 @@ public class DirectoryFlowLoader implements FlowLoader {
    *
    * @return Map of flow name to Flow.
    */
+  @Override
   public Map<String, Flow> getFlowMap() {
     return this.flowMap;
   }
@@ -92,6 +86,7 @@ public class DirectoryFlowLoader implements FlowLoader {
    *
    * @return Set of error strings.
    */
+  @Override
   public Set<String> getErrors() {
     return this.errors;
   }
@@ -144,7 +139,7 @@ public class DirectoryFlowLoader implements FlowLoader {
     // Resolve embedded flows
     resolveEmbeddedFlows();
 
-    checkJobProperties(project);
+    FlowLoaderUtils.checkJobProperties(project.getId(), this.props, this.jobPropsMap, this.errors);
 
     return FlowLoaderUtils.generateFlowLoaderReport(this.errors);
 
@@ -215,8 +210,7 @@ public class DirectoryFlowLoader implements FlowLoader {
       }
     }
 
-    final File[] subDirs = dir.listFiles(DIR_FILTER);
-    for (final File file : subDirs) {
+    for (final File file : dir.listFiles(new DirFilter())) {
       loadProjectFromDir(base, file, parent);
     }
   }
@@ -321,7 +315,6 @@ public class DirectoryFlowLoader implements FlowLoader {
     }
 
     // Now create flows. Bad flows are marked invalid
-    final Set<String> visitedNodes = new HashSet<>();
     for (final Node base : this.nodeMap.values()) {
       // Root nodes can be discovered when parsing jobs
       if (this.rootNodes.contains(base.getId())
@@ -333,15 +326,20 @@ public class DirectoryFlowLoader implements FlowLoader {
         FlowLoaderUtils.addEmailPropsToFlow(flow, jobProp);
 
         flow.addAllFlowProperties(this.flowPropsList);
-        constructFlow(flow, base, visitedNodes);
+        final Set<String> visitedNodesOnPath = new HashSet<>();
+        final Set<String> visitedNodesEver = new HashSet<>();
+        constructFlow(flow, base, visitedNodesOnPath, visitedNodesEver);
+
         flow.initialize();
         this.flowMap.put(base.getId(), flow);
       }
     }
   }
 
-  private void constructFlow(final Flow flow, final Node node, final Set<String> visited) {
-    visited.add(node.getId());
+  private void constructFlow(final Flow flow, final Node node, final Set<String> visitedOnPath,
+      final Set<String> visitedEver) {
+    visitedOnPath.add(node.getId());
+    visitedEver.add(node.getId());
 
     flow.addNode(node);
     if (SpecialJobTypes.EMBEDDED_FLOW_TYPE.equals(node.getType())) {
@@ -363,60 +361,25 @@ public class DirectoryFlowLoader implements FlowLoader {
       for (Edge edge : dependencies.values()) {
         if (edge.hasError()) {
           flow.addEdge(edge);
-        } else if (visited.contains(edge.getSourceId())) {
+        } else if (visitedOnPath.contains(edge.getSourceId())) {
           // We have a cycle. We set it as an error edge
           edge = new Edge(edge.getSourceId(), node.getId());
           edge.setError("Cyclical dependencies found.");
           this.errors.add("Cyclical dependency found at " + edge.getId());
           flow.addEdge(edge);
+        } else if (visitedEver.contains(edge.getSourceId())) {
+          // this node was already checked, don't need to check further
+          flow.addEdge(edge);
         } else {
           // This should not be null
           flow.addEdge(edge);
           final Node sourceNode = this.nodeMap.get(edge.getSourceId());
-          constructFlow(flow, sourceNode, visited);
+          constructFlow(flow, sourceNode, visitedOnPath, visitedEver);
         }
       }
     }
 
-    visited.remove(node.getId());
-  }
-
-  public void checkJobProperties(final Project project) {
-    // if project is in the memory check whitelist, then we don't need to check
-    // its memory settings
-    if (ProjectWhitelist.isProjectWhitelisted(project.getId(),
-        ProjectWhitelist.WhitelistType.MemoryCheck)) {
-      return;
-    }
-
-    final String maxXms = this.props.getString(
-        Constants.JobProperties.JOB_MAX_XMS, Constants.JobProperties.MAX_XMS_DEFAULT);
-    final String maxXmx = this.props.getString(
-        Constants.JobProperties.JOB_MAX_XMX, Constants.JobProperties.MAX_XMX_DEFAULT);
-    final long sizeMaxXms = Utils.parseMemString(maxXms);
-    final long sizeMaxXmx = Utils.parseMemString(maxXmx);
-
-    for (final String jobName : this.jobPropsMap.keySet()) {
-
-      final Props jobProps = this.jobPropsMap.get(jobName);
-      final String xms = jobProps.getString(XMS, null);
-      if (xms != null && !PropsUtils.isVarialbeReplacementPattern(xms)
-          && Utils.parseMemString(xms) > sizeMaxXms) {
-        this.errors.add(String.format(
-            "%s: Xms value has exceeded the allowed limit (max Xms = %s)",
-            jobName, maxXms));
-      }
-      final String xmx = jobProps.getString(XMX, null);
-      if (xmx != null && !PropsUtils.isVarialbeReplacementPattern(xmx)
-          && Utils.parseMemString(xmx) > sizeMaxXmx) {
-        this.errors.add(String.format(
-            "%s: Xmx value has exceeded the allowed limit (max Xmx = %s)",
-            jobName, maxXmx));
-      }
-
-      // job callback properties check
-      JobCallbackValidator.validate(jobName, this.props, jobProps, this.errors);
-    }
+    visitedOnPath.remove(node.getId());
   }
 
   private String getNameWithoutExtension(final File file) {
@@ -429,13 +392,4 @@ public class DirectoryFlowLoader implements FlowLoader {
   private String getRelativeFilePath(final String basePath, final String filePath) {
     return filePath.substring(basePath.length() + 1);
   }
-
-  private static class DirFilter implements FileFilter {
-
-    @Override
-    public boolean accept(final File pathname) {
-      return pathname.isDirectory();
-    }
-  }
-
 }
