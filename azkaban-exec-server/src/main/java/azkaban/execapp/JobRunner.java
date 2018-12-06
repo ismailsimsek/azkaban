@@ -49,6 +49,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
+
 import org.apache.kafka.log4jappender.KafkaLog4jAppender;
 import org.apache.log4j.Appender;
 import org.apache.log4j.EnhancedPatternLayout;
@@ -63,8 +64,10 @@ public class JobRunner extends EventHandler implements Runnable {
 
   private static final Logger serverLogger = Logger.getLogger(JobRunner.class);
   private static final Object logCreatorLock = new Object();
-  private final Layout DEFAULT_LAYOUT = new EnhancedPatternLayout(
-      "%d{dd-MM-yyyy HH:mm:ss z} %c{1} %p - %m\n");
+
+  private static final String DEFAULT_LAYOUT =
+      "%d{dd-MM-yyyy HH:mm:ss z} %c{1} %p - %m\n";
+
   private final Object syncObject = new Object();
   private final JobTypeManager jobtypeManager;
   private final ExecutorLoader loader;
@@ -72,7 +75,7 @@ public class JobRunner extends EventHandler implements Runnable {
   private final Props azkabanProps;
   private final ExecutableNode node;
   private final File workingDir;
-  private final Layout loggerLayout = this.DEFAULT_LAYOUT;
+  private final Layout loggerLayout;
   private final String jobId;
   private final Set<String> pipelineJobs = new HashSet<>();
   private Logger logger = null;
@@ -106,6 +109,10 @@ public class JobRunner extends EventHandler implements Runnable {
     this.loader = loader;
     this.jobtypeManager = jobtypeManager;
     this.azkabanProps = azkabanProps;
+    final String jobLogLayout = props.getString(
+        JobProperties.JOB_LOG_LAYOUT, DEFAULT_LAYOUT);
+
+    this.loggerLayout = new EnhancedPatternLayout(jobLogLayout);
   }
 
   public static String createLogFileName(final ExecutableNode node, final int attempt) {
@@ -315,6 +322,7 @@ public class JobRunner extends EventHandler implements Runnable {
     final String logName = createLogFileName(this.node);
     this.logFile = new File(this.workingDir, logName);
     final String absolutePath = this.logFile.getAbsolutePath();
+    this.flowLogger.info("Log file path for job: " + this.jobId + " is: " + absolutePath);
 
     // Attempt to create FileAppender
     final RollingFileAppender fileAppender =
@@ -665,6 +673,7 @@ public class JobRunner extends EventHandler implements Runnable {
       this.props.put(CommonJobProperties.JOB_METADATA_FILE,
           createMetaDataFileName(this.node));
       this.props.put(CommonJobProperties.JOB_ATTACHMENT_FILE, this.attachmentFileName);
+      this.props.put(CommonJobProperties.JOB_LOG_FILE, this.logFile.getAbsolutePath());
       finalStatus = changeStatus(Status.RUNNING);
 
       // Ability to specify working directory

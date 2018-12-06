@@ -50,6 +50,7 @@ public class Flow {
   private boolean isLayedOut = false;
   private boolean isEmbeddedFlow = false;
   private double azkabanFlowVersion = Constants.DEFAULT_AZKABAN_FLOW_VERSION;
+  private String condition = null;
 
   public Flow(final String id) {
     this.id = id;
@@ -62,6 +63,8 @@ public class Flow {
     final Boolean layedout = (Boolean) flowObject.get("layedout");
     final Boolean isEmbeddedFlow = (Boolean) flowObject.get("embeddedFlow");
     final Double azkabanFlowVersion = (Double) flowObject.get("azkabanFlowVersion");
+    final String condition = (String) flowObject.get("condition");
+
     final Flow flow = new Flow(id);
     if (layedout != null) {
       flow.setLayedOut(layedout);
@@ -73,6 +76,10 @@ public class Flow {
 
     if (azkabanFlowVersion != null) {
       flow.setAzkabanFlowVersion(azkabanFlowVersion);
+    }
+
+    if (condition != null) {
+      flow.setCondition(condition);
     }
 
     final int projId = (Integer) flowObject.get("project.id");
@@ -171,28 +178,31 @@ public class Flow {
         }
       }
 
-      for (final Node node : this.startNodes) {
-        node.setLevel(0);
-        this.numLevels = 0;
-        recursiveSetLevels(node);
-      }
+      setLevelsAndEdgeNodes(new HashSet<>(this.startNodes), 0);
     }
   }
 
-  private void recursiveSetLevels(final Node node) {
-    final Set<Edge> edges = this.outEdges.get(node.getId());
-    if (edges != null) {
-      for (final Edge edge : edges) {
-        final Node nextNode = this.nodes.get(edge.getTargetId());
-        edge.setSource(node);
-        edge.setTarget(nextNode);
+  private void setLevelsAndEdgeNodes(final Set<Node> levelNodes, final int level) {
+    final Set<Node> nextLevelNodes = new HashSet<>();
 
-        // We pick whichever is higher to get the max distance from root.
-        final int level = Math.max(node.getLevel() + 1, nextNode.getLevel());
-        nextNode.setLevel(level);
-        this.numLevels = Math.max(level, this.numLevels);
-        recursiveSetLevels(nextNode);
+    for (final Node node : levelNodes) {
+      node.setLevel(level);
+
+      final Set<Edge> edges = this.outEdges.get(node.getId());
+      if (edges != null) {
+        edges.forEach(edge -> {
+          edge.setSource(node);
+          edge.setTarget(this.nodes.get(edge.getTargetId()));
+
+          nextLevelNodes.add(edge.getTarget());
+        });
       }
+    }
+
+    this.numLevels = level;
+
+    if (!nextLevelNodes.isEmpty()) {
+      setLevelsAndEdgeNodes(nextLevelNodes, level + 1);
     }
   }
 
@@ -336,6 +346,8 @@ public class Flow {
     flowObj.put("layedout", this.isLayedOut);
     flowObj.put("embeddedFlow", this.isEmbeddedFlow);
     flowObj.put("azkabanFlowVersion", this.azkabanFlowVersion);
+    flowObj.put("condition", this.condition);
+
     if (this.errors != null) {
       flowObj.put("errors", this.errors);
     }
@@ -399,6 +411,14 @@ public class Flow {
 
   public void setAzkabanFlowVersion(final double azkabanFlowVersion) {
     this.azkabanFlowVersion = azkabanFlowVersion;
+  }
+
+  public String getCondition() {
+    return this.condition;
+  }
+
+  public void setCondition(final String condition) {
+    this.condition = condition;
   }
 
   public Map<String, Object> getMetadata() {
