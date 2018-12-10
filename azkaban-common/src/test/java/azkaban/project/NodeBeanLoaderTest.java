@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import azkaban.Constants;
+import azkaban.Constants.FlowTriggerProps;
 import azkaban.test.executions.ExecutionsTestUtil;
 import azkaban.utils.Props;
 import com.google.common.collect.ImmutableMap;
@@ -125,8 +126,9 @@ public class NodeBeanLoaderTest {
     final NodeBeanLoader loader = new NodeBeanLoader();
     final NodeBean nodeBean = loader.load(ExecutionsTestUtil.getFlowFile(
         TRIGGER_FLOW_YML_TEST_DIR, TRIGGER_FLOW_YML_FILE));
-    final Map<String, String> schedule = ImmutableMap.of(Constants.SCHEDULE_TYPE, Constants
-        .CRON_SCHEDULE_TYPE, Constants.SCHEDULE_VALUE, CRON_EXPRESSION);
+    final Map<String, String> schedule = ImmutableMap
+        .of(FlowTriggerProps.SCHEDULE_TYPE, FlowTriggerProps
+            .CRON_SCHEDULE_TYPE, FlowTriggerProps.SCHEDULE_VALUE, CRON_EXPRESSION);
     validateFlowTriggerBean(nodeBean.getTrigger(), MAX_WAIT_MINS, schedule, 2);
     final List<TriggerDependencyBean> triggerDependencyBeans = nodeBean.getTrigger()
         .getTriggerDependencies();
@@ -207,17 +209,12 @@ public class NodeBeanLoaderTest {
   public void testFlowTriggerMaxWaitMinValidation() throws Exception {
     final NodeBeanLoader loader = new NodeBeanLoader();
 
-    NodeBean nodeBean = loader.load(ExecutionsTestUtil.getFlowFile(
+    final NodeBean nodeBean = loader.load(ExecutionsTestUtil.getFlowFile(
         TRIGGER_FLOW_YML_TEST_DIR, "flow_trigger_no_max_wait_min.flow"));
-    FlowTrigger flowTrigger = loader.toFlowTrigger(nodeBean.getTrigger());
-    assertThat(flowTrigger.getMaxWaitDuration())
-        .isEqualTo(Constants.DEFAULT_FLOW_TRIGGER_MAX_WAIT_TIME);
 
-    nodeBean = loader.load(ExecutionsTestUtil.getFlowFile(
-        TRIGGER_FLOW_YML_TEST_DIR, "flow_trigger_large_max_wait_min.flow"));
-    flowTrigger = loader.toFlowTrigger(nodeBean.getTrigger());
-    assertThat(flowTrigger.getMaxWaitDuration())
-        .isEqualTo(Constants.DEFAULT_FLOW_TRIGGER_MAX_WAIT_TIME);
+    assertThatThrownBy(() -> loader.toFlowTrigger(nodeBean.getTrigger()))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("max wait min cannot be null unless no dependency is defined");
 
     final NodeBean nodeBean2 = loader.load(ExecutionsTestUtil.getFlowFile(
         TRIGGER_FLOW_YML_TEST_DIR, "flow_trigger_zero_max_wait_min.flow"));
@@ -225,6 +222,22 @@ public class NodeBeanLoaderTest {
     assertThatThrownBy(() -> loader.toFlowTrigger(nodeBean2.getTrigger()))
         .isInstanceOf(IllegalArgumentException.class).hasMessage("max wait min must be at least 1"
         + " min(s)");
+
+    NodeBean nodeBean3 = loader.load(ExecutionsTestUtil.getFlowFile(
+        TRIGGER_FLOW_YML_TEST_DIR, "flow_trigger_large_max_wait_min.flow"));
+    FlowTrigger flowTrigger = loader.toFlowTrigger(nodeBean3.getTrigger());
+    assertThat(flowTrigger.getMaxWaitDuration().orElse(null))
+        .isEqualTo(Constants.DEFAULT_FLOW_TRIGGER_MAX_WAIT_TIME);
+
+    nodeBean3 = loader.load(ExecutionsTestUtil.getFlowFile(
+        TRIGGER_FLOW_YML_TEST_DIR, "flow_trigger_no_max_wait_min_zero_dep.flow"));
+    flowTrigger = loader.toFlowTrigger(nodeBean3.getTrigger());
+    assertThat(flowTrigger.getMaxWaitDuration().orElse(null)).isEqualTo(null);
+
+    nodeBean3 = loader.load(ExecutionsTestUtil.getFlowFile(
+        TRIGGER_FLOW_YML_TEST_DIR, "flow_trigger_max_wait_min_zero_dep.flow"));
+    flowTrigger = loader.toFlowTrigger(nodeBean3.getTrigger());
+    assertThat(flowTrigger.getMaxWaitDuration().get().toMinutes()).isEqualTo(5);
   }
 
   @Test
@@ -265,10 +278,22 @@ public class NodeBeanLoaderTest {
     assertThatThrownBy(() -> loader.toFlowTrigger(nodeBean.getTrigger()))
         .isInstanceOf(IllegalArgumentException.class);
 
+    final NodeBean nodeBean1 = loader.load(ExecutionsTestUtil.getFlowFile(
+        TRIGGER_FLOW_YML_TEST_DIR, "flow_trigger_second_level_cron_expression1.flow"));
+
+    assertThatThrownBy(() -> loader.toFlowTrigger(nodeBean1.getTrigger()))
+        .isInstanceOf(IllegalArgumentException.class);
+
     final NodeBean nodeBean2 = loader.load(ExecutionsTestUtil.getFlowFile(
-        TRIGGER_FLOW_YML_TEST_DIR, "flow_trigger_no_schedule.flow"));
+        TRIGGER_FLOW_YML_TEST_DIR, "flow_trigger_second_level_cron_expression2.flow"));
 
     assertThatThrownBy(() -> loader.toFlowTrigger(nodeBean2.getTrigger()))
+        .isInstanceOf(IllegalArgumentException.class);
+
+    final NodeBean nodeBean3 = loader.load(ExecutionsTestUtil.getFlowFile(
+        TRIGGER_FLOW_YML_TEST_DIR, "flow_trigger_no_schedule.flow"));
+
+    assertThatThrownBy(() -> loader.toFlowTrigger(nodeBean3.getTrigger()))
         .isInstanceOf(NullPointerException.class);
   }
 
@@ -436,7 +461,8 @@ public class NodeBeanLoaderTest {
 
   private void validateFlowTrigger(final FlowTrigger flowTrigger, final long maxWaitMins, final
   String cronExpression, final int numDependencies) {
-    assertThat(flowTrigger.getMaxWaitDuration()).isEqualTo(Duration.ofMinutes(maxWaitMins));
+    assertThat(flowTrigger.getMaxWaitDuration().orElse(null)).isEqualTo(Duration.ofMinutes
+        (maxWaitMins));
     assertThat(flowTrigger.getSchedule().getCronExpression()).isEqualTo(cronExpression);
     assertThat(flowTrigger.getDependencies().size()).isEqualTo(numDependencies);
   }

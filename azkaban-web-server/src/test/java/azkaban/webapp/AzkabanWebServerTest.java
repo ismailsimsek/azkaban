@@ -19,12 +19,12 @@ package azkaban.webapp;
 
 import static azkaban.ServiceProvider.SERVICE_PROVIDER;
 import static azkaban.ServiceProviderTest.assertSingleton;
-import static azkaban.executor.ExecutorManager.AZKABAN_USE_MULTIPLE_EXECUTORS;
 import static java.util.Objects.requireNonNull;
 import static org.apache.commons.io.FileUtils.deleteQuietly;
 import static org.junit.Assert.assertNotNull;
 
 import azkaban.AzkabanCommonModule;
+import azkaban.Constants;
 import azkaban.database.AzkabanDatabaseSetup;
 import azkaban.database.AzkabanDatabaseUpdater;
 import azkaban.db.DatabaseOperator;
@@ -38,7 +38,7 @@ import azkaban.executor.Executor;
 import azkaban.executor.ExecutorDao;
 import azkaban.executor.ExecutorEventsDao;
 import azkaban.executor.ExecutorLoader;
-import azkaban.executor.ExecutorManager;
+import azkaban.executor.ExecutorManagerAdapter;
 import azkaban.executor.FetchActiveFlowDao;
 import azkaban.project.ProjectLoader;
 import azkaban.project.ProjectManager;
@@ -92,7 +92,7 @@ public class AzkabanWebServerTest {
     props.put("database.type", "h2");
     props.put("h2.path", "./h2");
 
-    props.put(AZKABAN_USE_MULTIPLE_EXECUTORS, "true");
+    props.put(Constants.ConfigurationKeys.USE_MULTIPLE_EXECUTORS, "true");
     props.put("server.port", "0");
     props.put("jetty.port", "0");
     props.put("server.useSSL", "true");
@@ -111,7 +111,7 @@ public class AzkabanWebServerTest {
 
     deleteQuietly(new File("h2.mv.db"));
     deleteQuietly(new File("h2.trace.db"));
-    deleteQuietly(new File("executor.port"));
+    deleteQuietly(new File(Constants.DEFAULT_EXECUTOR_PORT_FILE));
     deleteQuietly(new File("executions"));
     deleteQuietly(new File("projects"));
   }
@@ -120,7 +120,7 @@ public class AzkabanWebServerTest {
   public void testInjection() throws Exception {
     final Injector injector = Guice.createInjector(
         new AzkabanCommonModule(props),
-        new AzkabanWebServerModule()
+        new AzkabanWebServerModule(props)
     );
     SERVICE_PROVIDER.unsetInjector();
     SERVICE_PROVIDER.setInjector(injector);
@@ -137,7 +137,7 @@ public class AzkabanWebServerTest {
 
     //Test if triggermanager is singletonly guiced. If not, the below test will fail.
     assertSingleton(ExecutorLoader.class, injector);
-    assertSingleton(ExecutorManager.class, injector);
+    assertSingleton(ExecutorManagerAdapter.class, injector);
     assertSingleton(ProjectLoader.class, injector);
     assertSingleton(ProjectManager.class, injector);
     assertSingleton(Storage.class, injector);
