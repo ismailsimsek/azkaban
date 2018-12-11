@@ -1,75 +1,17 @@
 # Azkaban 
 
-[![Build Status](http://img.shields.io/travis/azkaban/azkaban.svg?style=flat)](https://travis-ci.org/azkaban/azkaban)[![codecov.io](https://codecov.io/github/azkaban/azkaban/branch/master/graph/badge.svg)](https://codecov.io/github/azkaban/azkaban)[![Join the chat at https://gitter.im/azkaban-workflow-engine/Lobby](https://badges.gitter.im/azkaban-workflow-engine/Lobby.svg)](https://gitter.im/azkaban-workflow-engine/Lobby?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)[![Documentation Status](https://readthedocs.org/projects/azkaban/badge/?version=latest)](http://azkaban.readthedocs.org/en/latest/?badge=latest)
+This is source code of azkaban application we are using in BI, our main workflow and scheduling tool. 
+this repository includew following minor patches we did. Master azkaban repository is here https://github.com/azkaban/azkaban
 
+PPRO changes
+you can see changes by comparing 'ppropatches' branch with master
 
-## Build
-Azkaban builds use Gradle and requires Java 8 or higher.
+# Changes
+## XmlUserManager2
+it enables us to add hashed passwords to usermanager file. 
+## XmlMD5UserManager
+it enables us to add MD5 hashed passwords to usermanager file. not used at the moment. 
 
-The following set of commands run on *nix platforms like Linux, OS X.
+## FLOW_EXECUTION_DIR
+adds new runtime parametter (${azkaban.flow.execution.dir}) which is giving "Root directory of the execution."
 
-```
-# Build Azkaban
-./gradlew build
-
-# Clean the build
-./gradlew clean
-
-# Build and install distributions
-./gradlew installDist
-
-# Run tests
-./gradlew test
-
-# Build without running tests
-./gradlew build -x test
-```
-
-### Build a release
-
-Pick a release from [the release page](https://github.com/azkaban/azkaban/releases). 
-Find the tag corresponding to the release.
-
-Check out the source code corresponding to that tag.
-e.g.
-
-`
-git checkout 3.30.1
-`
-
-Build 
-```
-./gradlew clean build
-```
-
-## Documentation
-
-The current documentation will be deprecated soon at [azkaban.github.io](http://azkaban.github.io). 
-The [new Documentation site](https://azkaban.readthedocs.io/en/latest/) is under development.
-The source code for the documentation is inside `docs` directory.
-
-For help, please visit the [Azkaban Google Group](https://groups.google.com/forum/?fromgroups#!forum/azkaban-dev).
-
-## Developer Guide
-
-See [the contribution guide](https://github.com/azkaban/azkaban/blob/master/CONTRIBUTING.md).
-
-#### Documentation development
-
-If you want to contribute to the documentation or the release tool (inside the `tools` folder), 
-please make sure python3 is installed in your environment. python virtual environment is recommended to run these scripts.
-
-To download the python3 dependencies, run 
-
-```bash
-pip3 install -r requirements.txt
-```
-After, enter the documentation folder `docs` and make the build by running
-```bash
-cd docs
-make html
-```
-
-
-**[July, 2018]** We are actively improving our documentation. Everyone in the AZ community is 
-welcome to submit a pull request to edit/fix the documentation.
