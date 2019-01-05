@@ -16,9 +16,9 @@
 
 package azkaban.utils;
 
-import com.google.common.base.Preconditions;
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.FileInputStream;
@@ -26,14 +26,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.nio.file.attribute.FileTime;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.StringTokenizer;
@@ -73,31 +72,50 @@ public class FileIOUtils {
     return true;
   }
 
+  public static int getFileCount(final File file) {
+    final File[] files = file.listFiles();
+    int count = 0;
+    for (final File f : files) {
+      if (f.isDirectory()) {
+        count += getFileCount(f);
+      } else {
+        count++;
+      }
+    }
+    return count;
+  }
+
 
   /**
-   * Return creation time of file.
+   * Dumps a number into a new file.
+   *
+   * @param filePath the target file
+   * @param num the number to dump
+   * @throws IOException if file already exists
    */
-  public static long getCreationTime(final File file) throws IOException {
-    Preconditions.checkArgument(file.exists(), file + " doesn't exist");
-    final BasicFileAttributes attrs = Files
-        .readAttributes(file.toPath(), BasicFileAttributes.class);
-    final FileTime time = attrs.creationTime();
-    return time.toMillis();
+  public static void dumpNumberToFile(final Path filePath, final long num) throws IOException {
+    try (final BufferedWriter writer = Files
+        .newBufferedWriter(filePath, StandardCharsets.UTF_8)) {
+      writer.write(String.valueOf(num));
+    } catch (final IOException e) {
+      logger.error(String.format("Failed to write the number %s to the file %s", num, filePath), e);
+      throw e;
+    }
   }
 
   /**
-   * Return the size of dir in KB.
+   * Reads a number from a file.
+   *
+   * @param filePath the target file
    */
-  public static long sizeInKB(final File dir) throws IOException {
-    Preconditions.checkArgument(dir.isDirectory(), dir + " is not a directory");
-    Preconditions.checkArgument(dir.exists(), dir + " doesn't exist");
-
-    final java.util.Scanner s = new java.util.Scanner(
-        Runtime.getRuntime().exec("du -sh -k " + dir.getAbsolutePath()).getInputStream(),
-        Charset.defaultCharset().name()).useDelimiter("\\A");
-    final String str = s.hasNext() ? s.next() : "";
-    final String[] res = str.split("\\s+");
-    return Long.valueOf(res[0]);
+  public static long readNumberFromFile(final Path filePath)
+      throws IOException, NumberFormatException {
+    final List<String> allLines = Files.readAllLines(filePath);
+    if (!allLines.isEmpty()) {
+      return Long.parseLong(allLines.get(0));
+    } else {
+      throw new NumberFormatException("unable to parse empty file " + filePath.toString());
+    }
   }
 
   public static String getSourcePathFromClass(final Class<?> containedClass) {
@@ -123,7 +141,7 @@ public class FileIOUtils {
   /**
    * Hard link files and recurse into directories.
    */
-  public static void createDeepHardlink(final File sourceDir, final File destDir)
+  public static int createDeepHardlink(final File sourceDir, final File destDir)
       throws IOException {
     if (!sourceDir.exists()) {
       throw new IOException("Source directory " + sourceDir.getPath()
@@ -138,6 +156,7 @@ public class FileIOUtils {
     final Set<String> paths = new HashSet<>();
     createDirsFindFiles(sourceDir, sourceDir, destDir, paths);
 
+    int linkCount = 0;
     for (String path : paths) {
       final File sourceLink = new File(sourceDir, path);
       path = destDir + path;
@@ -149,9 +168,11 @@ public class FileIOUtils {
           // NOTE!! If modifying this, you must run this ignored test manually to validate:
           // FileIOUtilsTest#testHardlinkCopyOfBigDir
           Files.createLink(linkFile.toPath(), Paths.get(targetFile.getAbsolutePath()));
+          linkCount++;
         }
       }
     }
+    return linkCount;
   }
 
   private static void createDirsFindFiles(final File baseDir, final File sourceDir,

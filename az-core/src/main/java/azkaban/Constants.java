@@ -58,8 +58,7 @@ public class Constants {
   public static final String AZKABAN_PROPERTIES_FILE = "azkaban.properties";
   public static final String AZKABAN_PRIVATE_PROPERTIES_FILE = "azkaban.private.properties";
   public static final String DEFAULT_CONF_PATH = "conf";
-  public static final String AZKABAN_EXECUTOR_PORT_FILENAME = "executor.port";
-  public static final String AZKABAN_EXECUTOR_PORT_FILE = "executor.portfile";
+  public static final String DEFAULT_EXECUTOR_PORT_FILE = "executor.port";
 
   public static final String AZKABAN_SERVLET_CONTEXT_KEY = "azkaban_app";
 
@@ -89,8 +88,11 @@ public class Constants {
   // The flow exec id for a flow trigger instance unable to trigger a flow yet
   public static final int FAILED_EXEC_ID = -2;
 
-
   public static class ConfigurationKeys {
+
+    // Configures Azkaban to use new polling model for dispatching
+    public static final String AZKABAN_POLL_MODEL = "azkaban.poll.model";
+    public static final String AZKABAN_POLLING_INTERVAL_MS = "azkaban.polling.interval.ms";
 
     // Configures Azkaban Flow Version in project YAML file
     public static final String AZKABAN_FLOW_VERSION = "azkaban-flow-version";
@@ -157,10 +159,8 @@ public class Constants {
 
     // Legacy configs section, new configs should follow the naming convention of azkaban.server.<rest of the name> for server configs.
 
-    // The property is used for the web server to get the host name of the executor when running in SOLO mode.
-    public static final String EXECUTOR_HOST = "executor.host";
-
-    // The property is used for the web server to get the port of the executor when running in SOLO mode.
+    public static final String EXECUTOR_PORT_FILE = "executor.portfile";
+    // To set a fixed port for executor-server. Otherwise some available port is used.
     public static final String EXECUTOR_PORT = "executor.port";
 
     // Max flow running time in mins, server will kill flows running longer than this setting.
@@ -228,16 +228,14 @@ public class Constants {
 
     public static final String SESSION_TIME_TO_LIVE = "session.time.to.live";
 
-    // allowed max size of project dir in mb
-    public static final String PROJECT_DIR_MAX_SIZE = "azkaban.project_cache_max_size_in_mb";
+    // allowed max size of shared project dir in MB
+    public static final String PROJECT_DIR_MAX_SIZE_IN_MB = "azkaban.project_cache_max_size_in_mb";
 
-    // the disk usage threshold to trigger project dir cleanup.
-    // E.g, if set to 80, cleanup will trigger when project dir size >= 80% of {@value#PROJECT_DIR_MAX_SIZE}.
-    public static final String PROJECT_DIR_CLEANUP_START_THRESHOLD = "azkaban.project_cache_start_cleanup_threshold";
+    // how many older versions of project files are kept in DB before deleting them
+    public static final String PROJECT_VERSION_RETENTION = "project.version.retention";
 
-    // the disk usage threshold to stop project dir cleanup.
-    // E.g, if set to 60, cleanup will stop when project dir size < 60% of {@value#PROJECT_DIR_MAX_SIZE}.
-    public static final String PROJECT_DIR_CLEANUP_STOP_THRESHOLD = "azkaban.project_cache.stop_cleanup_threshold";
+    // number of rows to be displayed on the executions page.
+    public static final String DISPLAY_EXECUTION_PAGE_SIZE = "azkaban.display.execution_page_size";
   }
 
   public static class FlowProperties {

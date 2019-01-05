@@ -81,6 +81,11 @@ public class HadoopHiveJob extends JavaProcessJob {
 
   @Override
   public void run() throws Exception {
+    String[] tagKeys = new String[] { CommonJobProperties.EXEC_ID,
+        CommonJobProperties.FLOW_ID, CommonJobProperties.PROJECT_NAME };
+    getJobProps().put(HadoopConfigurationInjector.INJECT_PREFIX
+        + HadoopJobUtils.MAPREDUCE_JOB_TAGS,
+        HadoopJobUtils.constructHadoopTags(getJobProps(), tagKeys));
     HadoopConfigurationInjector.prepareResourcesToInject(getJobProps(),
         getWorkingDirectory());
 
@@ -286,11 +291,8 @@ public class HadoopHiveJob extends JavaProcessJob {
 
     info("Cancel called.  Killing the Hive launched MR jobs on the cluster");
 
-    String azExecId = jobProps.getString(CommonJobProperties.EXEC_ID);
-    final String logFilePath =
-        String.format("%s/_job.%s.%s.log", getWorkingDirectory(), azExecId,
-            getId());
-    info("log file path is: " + logFilePath);
+    final String logFilePath = jobProps.getString(CommonJobProperties.JOB_LOG_FILE);
+    info("Log file path is: " + logFilePath);
 
     HadoopJobUtils.proxyUserKillAllSpawnedHadoopJobs(logFilePath, jobProps, tokenFile, getLog());
   }

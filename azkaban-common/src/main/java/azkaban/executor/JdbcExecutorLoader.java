@@ -20,12 +20,12 @@ import azkaban.executor.ExecutorLogEvent.EventType;
 import azkaban.utils.FileIOUtils.LogData;
 import azkaban.utils.Pair;
 import azkaban.utils.Props;
-import javax.inject.Inject;
-import javax.inject.Singleton;
 import java.io.File;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import javax.inject.Inject;
+import javax.inject.Singleton;
 
 @Singleton
 public class JdbcExecutorLoader implements ExecutorLoader {
@@ -97,14 +97,18 @@ public class JdbcExecutorLoader implements ExecutorLoader {
   @Override
   public Map<Integer, Pair<ExecutionReference, ExecutableFlow>> fetchActiveFlows()
       throws ExecutorManagerException {
-
     return this.fetchActiveFlowDao.fetchActiveFlows();
+  }
+
+  @Override
+  public Map<Integer, Pair<ExecutionReference, ExecutableFlow>> fetchUnfinishedFlows()
+      throws ExecutorManagerException {
+    return this.fetchActiveFlowDao.fetchUnfinishedFlows();
   }
 
   @Override
   public Pair<ExecutionReference, ExecutableFlow> fetchActiveFlowByExecId(final int execId)
       throws ExecutorManagerException {
-
     return this.fetchActiveFlowDao.fetchActiveFlowByExecId(execId);
   }
 
@@ -129,6 +133,12 @@ public class JdbcExecutorLoader implements ExecutorLoader {
   public List<ExecutableFlow> fetchFlowHistory(final int projectId, final String flowId,
       final int skip, final int num) throws ExecutorManagerException {
     return this.executionFlowDao.fetchFlowHistory(projectId, flowId, skip, num);
+  }
+
+  @Override
+  public List<ExecutableFlow> fetchFlowHistory(final int projectId, final String flowId,
+      final long startTime) throws ExecutorManagerException {
+    return this.executionFlowDao.fetchFlowHistory(projectId, flowId, startTime);
   }
 
   @Override
@@ -328,5 +338,10 @@ public class JdbcExecutorLoader implements ExecutorLoader {
   @Override
   public void unassignExecutor(final int executionId) throws ExecutorManagerException {
     this.assignExecutorDao.unassignExecutor(executionId);
+  }
+
+  @Override
+  public int selectAndUpdateExecution(final int executorId) throws ExecutorManagerException {
+    return this.executionFlowDao.selectAndUpdateExecution(executorId);
   }
 }

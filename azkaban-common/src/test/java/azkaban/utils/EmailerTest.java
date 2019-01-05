@@ -17,11 +17,18 @@ package azkaban.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import azkaban.executor.ExecutableFlow;
+import azkaban.executor.Executor;
+import azkaban.executor.ExecutorLoader;
+import azkaban.executor.ExecutorManagerException;
+import azkaban.executor.MockExecutorLoader;
+import azkaban.executor.mail.DefaultMailCreatorTest;
 import azkaban.flow.Flow;
 import azkaban.metrics.CommonMetrics;
 import azkaban.metrics.MetricsManager;
@@ -30,7 +37,9 @@ import azkaban.project.Project;
 import azkaban.test.executions.ExecutionsTestUtil;
 import com.codahale.metrics.MetricRegistry;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import javax.mail.internet.AddressException;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -45,6 +54,7 @@ public class EmailerTest {
   private Props props;
   private EmailMessageCreator messageCreator;
   private EmailMessage message;
+  private ExecutorLoader executorLoader;
 
   public static EmailMessageCreator mockMessageCreator(final EmailMessage message) {
     final EmailMessageCreator mock = mock(EmailMessageCreator.class);
@@ -82,6 +92,7 @@ public class EmailerTest {
     this.messageCreator = mockMessageCreator(this.message);
     this.receiveAddrList.add(this.receiveAddr);
     this.project = new Project(11, "myTestProject");
+    this.executorLoader = new MockExecutorLoader();
 
     this.props = createMailProperties();
     final DirectoryFlowLoader loader = new DirectoryFlowLoader(this.props);
@@ -99,7 +110,8 @@ public class EmailerTest {
 
     final ExecutableFlow exFlow = new ExecutableFlow(this.project, flow);
     final CommonMetrics commonMetrics = new CommonMetrics(new MetricsManager(new MetricRegistry()));
-    final Emailer emailer = new Emailer(this.props, commonMetrics, this.messageCreator);
+    final Emailer emailer = new Emailer(this.props, commonMetrics, this.messageCreator,
+        this.executorLoader);
     emailer.alertOnError(exFlow);
     verify(this.message).addAllToAddress(this.receiveAddrList);
     verify(this.message).setSubject("Flow 'jobe' has failed on azkaban");
@@ -108,16 +120,38 @@ public class EmailerTest {
   }
 
   @Test
+  public void alertOnFailedUpdate() throws Exception {
+    final Flow flow = this.project.getFlow("jobe");
+    flow.addFailureEmails(this.receiveAddrList);
+    Assert.assertNotNull(flow);
+    final ExecutableFlow exFlow = new ExecutableFlow(this.project, flow);
+    final CommonMetrics commonMetrics = new CommonMetrics(new MetricsManager(new MetricRegistry()));
+    final Emailer emailer = new Emailer(this.props, commonMetrics, this.messageCreator,
+        this.executorLoader);
+    final Executor executor = new Executor(1, "executor1-host", 1234, true);
+    final List<ExecutableFlow> executions = Arrays.asList(exFlow, exFlow);
+    final ExecutorManagerException exception = DefaultMailCreatorTest.createTestStracktrace();
+    emailer.alertOnFailedUpdate(executor, executions, exception);
+    verify(this.message).addAllToAddress(this.receiveAddrList);
+    verify(this.message)
+        .setSubject("Flow status could not be updated from executor1-host on azkaban");
+    assertThat(TestUtils.readResource("failedUpdateMessage2.html", this))
+        .isEqualToIgnoringWhitespace(this.message.getBody());
+  }
+
+  @Test
   public void testGetAzkabanURL() {
     final CommonMetrics commonMetrics = new CommonMetrics(new MetricsManager(new MetricRegistry()));
-    final Emailer emailer = new Emailer(this.props, commonMetrics, this.messageCreator);
+    final Emailer emailer = new Emailer(this.props, commonMetrics, this.messageCreator,
+        this.executorLoader);
     assertThat(emailer.getAzkabanURL()).isEqualTo("http://localhost:8786");
   }
 
   @Test
   public void testCreateEmailMessage() {
     final CommonMetrics commonMetrics = new CommonMetrics(new MetricsManager(new MetricRegistry()));
-    final Emailer emailer = new Emailer(this.props, commonMetrics, this.messageCreator);
+    final Emailer emailer = new Emailer(this.props, commonMetrics, this.messageCreator,
+        this.executorLoader);
     final EmailMessage em = emailer
         .createEmailMessage("subject", "text/html", this.receiveAddrList);
     verify(this.messageCreator).createMessage();
@@ -125,5 +159,19 @@ public class EmailerTest {
     verify(this.message).addAllToAddress(this.receiveAddrList);
     verify(this.message).setSubject("subject");
     verify(this.message).setMimeType("text/html");
+  }
+
+  @Test
+  public void testSendEmailToInvalidAddress() throws Exception {
+    doThrow(AddressException.class).when(this.message).sendEmail();
+    final Flow flow = this.project.getFlow("jobe");
+    flow.addFailureEmails(this.receiveAddrList);
+
+    final ExecutableFlow exFlow = new ExecutableFlow(this.project, flow);
+    final CommonMetrics commonMetrics = mock(CommonMetrics.class);
+    final Emailer emailer = new Emailer(this.props, commonMetrics, this.messageCreator,
+        this.executorLoader);
+    emailer.alertOnError(exFlow);
+    verify(commonMetrics, never()).markSendEmailFail();
   }
 }

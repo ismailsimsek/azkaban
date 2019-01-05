@@ -22,13 +22,25 @@ import azkaban.Constants;
 import azkaban.Constants.ConfigurationKeys;
 import azkaban.alert.Alerter;
 import azkaban.executor.ExecutableFlow;
+import azkaban.executor.Executor;
+import azkaban.executor.ExecutorLoader;
+import azkaban.executor.ExecutorManagerException;
 import azkaban.executor.mail.DefaultMailCreator;
 import azkaban.executor.mail.MailCreator;
 import azkaban.metrics.CommonMetrics;
 import azkaban.sla.SlaOption;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableListMultimap;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Multimaps;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import javax.mail.internet.AddressException;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.log4j.Logger;
 
 @Singleton
@@ -42,11 +54,13 @@ public class Emailer extends AbstractMailer implements Alerter {
   private final String clientHostname;
   private final String clientPortNumber;
   private final String azkabanName;
+  private final ExecutorLoader executorLoader;
 
   @Inject
   public Emailer(final Props props, final CommonMetrics commonMetrics,
-      final EmailMessageCreator messageCreator) {
+      final EmailMessageCreator messageCreator, final ExecutorLoader executorLoader) {
     super(props, messageCreator);
+    this.executorLoader = requireNonNull(executorLoader, "executorLoader is null.");
     this.commonMetrics = requireNonNull(commonMetrics, "commonMetrics is null.");
     this.azkabanName = props.getString("azkaban.name", "azkaban");
 
@@ -113,8 +127,20 @@ public class Emailer extends AbstractMailer implements Alerter {
   public void alertOnError(final ExecutableFlow flow, final String... extraReasons) {
     final EmailMessage message = this.messageCreator.createMessage();
     final MailCreator mailCreator = getMailCreator(flow);
-    final boolean mailCreated = mailCreator.createErrorEmail(flow, message, this.azkabanName,
-        this.scheme, this.clientHostname, this.clientPortNumber, extraReasons);
+    List<ExecutableFlow> last72hoursExecutions = new ArrayList<>();
+
+    if (flow.getStartTime() > 0) {
+      final long startTime = flow.getStartTime() - Duration.ofHours(72).toMillis();
+      try {
+        last72hoursExecutions = this.executorLoader.fetchFlowHistory(flow.getProjectId(), flow
+            .getFlowId(), startTime);
+      } catch (final ExecutorManagerException e) {
+        logger.error("unable to fetch past executions", e);
+      }
+    }
+
+    final boolean mailCreated = mailCreator.createErrorEmail(flow, last72hoursExecutions, message,
+        this.azkabanName, this.scheme, this.clientHostname, this.clientPortNumber, extraReasons);
     sendEmail(message, mailCreated, "error email message for execution " + flow.getExecutionId());
   }
 
@@ -124,7 +150,56 @@ public class Emailer extends AbstractMailer implements Alerter {
     final MailCreator mailCreator = getMailCreator(flow);
     final boolean mailCreated = mailCreator.createSuccessEmail(flow, message, this.azkabanName,
         this.scheme, this.clientHostname, this.clientPortNumber);
-    sendEmail(message, mailCreated, "success email message for execution" + flow.getExecutionId());
+    sendEmail(message, mailCreated, "success email message for execution " + flow.getExecutionId());
+  }
+
+  /**
+   * Sends as many emails as there are unique combinations of:
+   *
+   * [mail creator] x [failure email address list]
+   *
+   * Executions with the same combo are grouped into a single message.
+   */
+  @Override
+  public void alertOnFailedUpdate(final Executor executor, List<ExecutableFlow> flows,
+      final ExecutorManagerException updateException) {
+
+    flows = flows.stream()
+        .filter(flow -> flow.getExecutionOptions() != null)
+        .filter(flow -> CollectionUtils.isNotEmpty(flow.getExecutionOptions().getFailureEmails()))
+        .collect(Collectors.toList());
+
+    // group by mail creator in case some flows use different creators
+    final ImmutableListMultimap<String, ExecutableFlow> creatorsToFlows = Multimaps
+        .index(flows, flow -> flow.getExecutionOptions().getMailCreator());
+
+    for (final String mailCreatorName : creatorsToFlows.keySet()) {
+
+      final ImmutableList<ExecutableFlow> creatorFlows = creatorsToFlows.get(mailCreatorName);
+      final MailCreator mailCreator = getMailCreator(mailCreatorName);
+
+      // group by recipients in case some flows have different failure email addresses
+      final ImmutableListMultimap<List<String>, ExecutableFlow> emailsToFlows = Multimaps
+          .index(creatorFlows, flow -> flow.getExecutionOptions().getFailureEmails());
+
+      for (final List<String> emailList : emailsToFlows.keySet()) {
+        sendFailedUpdateEmail(executor, updateException, mailCreator, emailsToFlows.get(emailList));
+      }
+    }
+  }
+
+  /**
+   * Sends a single email about failed updates.
+   */
+  private void sendFailedUpdateEmail(final Executor executor,
+      final ExecutorManagerException exception, final MailCreator mailCreator,
+      final ImmutableList<ExecutableFlow> flows) {
+    final EmailMessage message = this.messageCreator.createMessage();
+    final boolean mailCreated = mailCreator
+        .createFailedUpdateMessage(flows, executor, exception, message,
+            this.azkabanName, this.scheme, this.clientHostname, this.clientPortNumber);
+    final List<Integer> executionIds = Lists.transform(flows, ExecutableFlow::getExecutionId);
+    sendEmail(message, mailCreated, "failed update email message for executions " + executionIds);
   }
 
   private MailCreator getMailCreator(final ExecutableFlow flow) {
@@ -147,7 +222,9 @@ public class Emailer extends AbstractMailer implements Alerter {
         this.commonMetrics.markSendEmailSuccess();
       } catch (final Exception e) {
         logger.error("Failed to send " + operation, e);
-        this.commonMetrics.markSendEmailFail();
+        if (!(e instanceof AddressException)) {
+          this.commonMetrics.markSendEmailFail();
+        }
       }
     }
   }
