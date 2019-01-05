@@ -16,6 +16,12 @@
 
 apply plugin: 'distribution'
 
+repositories {
+    maven {
+      url 'http://nexus.pentaho.org/content/groups/omni'
+    }
+}
+
 dependencies {
     compile project(':az-core')
     compile project(":azkaban-common")
@@ -42,6 +48,11 @@ dependencies {
     }
     compile deps.sparkCore
     compile deps.commonsCli
+    
+    //pentaho dependencies 
+	compile "pentaho-kettle:kettle-core:8.2.0.1-427"
+	compile "pentaho-kettle:kettle-engine:8.2.0.1-427"
+	compile "org.pentaho.di.plugins:pdi-core-plugins-impl:8.2.0.1-427"
 }
 
 /**
