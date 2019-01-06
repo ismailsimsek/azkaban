@@ -1,0 +1,6 @@
+type=hadoopJava
+job.class=azkaban.jobtype.PentahoJobWrapper
+# classpath=./lib/*,${hadoop.home}/lib/*
+# main.args=${param.inData} ${param.outData}
+# force.output.overwrite=true
+dependencies=
