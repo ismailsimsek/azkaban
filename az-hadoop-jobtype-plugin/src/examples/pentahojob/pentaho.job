@@ -1,6 +1,16 @@
-type=hadoopJava
+type=java
 job.class=azkaban.jobtype.PentahoJobWrapper
+pentahojob.file=etl/parameterized_job.kjb
+pentahojob.other_namenodes=xxxxxxx
+pentahojob.level=Detailed
+pentahojob.param.DEMO_PARAMETER_1=Detailed
+pentahojob.param.DEMO_PARAMETER_2=testvalupepassedto_pentaho
+pentahojob.param.DEMO_PARAMETER_3=testvalupepassedto_pentaho3
 # classpath=./lib/*,${hadoop.home}/lib/*
 # main.args=${param.inData} ${param.outData}
 # force.output.overwrite=true
+
 dependencies=
+
+
+
