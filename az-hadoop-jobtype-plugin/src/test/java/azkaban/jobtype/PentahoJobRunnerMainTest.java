@@ -12,7 +12,7 @@ import org.pentaho.di.core.KettleEnvironment;
 import org.pentaho.di.core.exception.KettleException;
 import org.pentaho.di.job.Job;
 
-public class PentahoJobWrapperTest {
+public class PentahoJobRunnerMainTest {
 
   private Properties testProps;
   Logger logger = Logger.getRootLogger();
@@ -22,7 +22,7 @@ public class PentahoJobWrapperTest {
     KettleEnvironment.init(false);
 
     testProps = new Properties();
-    testProps.put("pentahojob.file", "src/test/resources/etl/parameterized_job.kjb");
+    testProps.put("pentahojob.file", "src/test/resources/pentahoetl/parameterized_job.kjb");
     testProps.put("other_namenodes", "xxxxxxx");
     testProps.put("pentahojob.level", "Detailed");
     testProps.put("pentahojob.param.DEMO_PARAMETER_1", "Detailed");
@@ -33,7 +33,7 @@ public class PentahoJobWrapperTest {
   @Test
   public void testRunningTransformations() throws Exception {
 
-    PentahoJobWrapper pentahoJob = new PentahoJobWrapper();
+    PentahoJobRunnerMain pentahoJob = new PentahoJobRunnerMain();
     // run a transformation from the file system
     Job j = pentahoJob.runJobFromFileSystem(this.testProps);
 

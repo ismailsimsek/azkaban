@@ -51,10 +51,7 @@ public class PentahoJobRunnerMain {
 
     Properties jobProps = HadoopSecureWrapperUtils.loadAzkabanProps();
     
-    
-
-    Map<String, String> pentahoVarMap = new HashMap<String, String>();
-    Enumeration e = jobProps.propertyNames();
+    Enumeration<?> e = jobProps.propertyNames();
     while (e.hasMoreElements()) {
       String key = (String) e.nextElement();
       logger.info(key +": "+jobProps.getProperty(key));
