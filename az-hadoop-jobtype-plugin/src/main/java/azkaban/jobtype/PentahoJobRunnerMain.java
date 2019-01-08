@@ -36,7 +36,7 @@ import org.pentaho.di.repository.Repository;
 import org.pentaho.di.repository.RepositoryDirectoryInterface;
 import org.pentaho.di.repository.RepositoryMeta;
 
-public class PentahoJobWrapper {
+public class PentahoJobRunnerMain {
 
   private static final Logger logger = Logger.getRootLogger();
 
@@ -50,8 +50,16 @@ public class PentahoJobWrapper {
   public static void main(final String[] args) throws Exception {
 
     Properties jobProps = HadoopSecureWrapperUtils.loadAzkabanProps();
-    runJob(args, jobProps);
+    
+    
 
+    Map<String, String> pentahoVarMap = new HashMap<String, String>();
+    Enumeration e = jobProps.propertyNames();
+    while (e.hasMoreElements()) {
+      String key = (String) e.nextElement();
+      logger.info(key +": "+jobProps.getProperty(key));
+    }
+    runJob(args, jobProps);
   }
 
   public static void runJob(String[] args, Properties jobProps) throws Exception {
