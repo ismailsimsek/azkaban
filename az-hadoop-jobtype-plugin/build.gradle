@@ -16,6 +16,13 @@
 
 apply plugin: 'distribution'
 
+repositories {
+    mavenCentral()
+    maven {
+      url 'https://mvnrepository.com/artifact/ch.vorburger.mariaDB4j/mariaDB4j'
+    }
+}
+
 dependencies {
     compile project(':az-core')
     compile project(":azkaban-common")
@@ -42,6 +49,8 @@ dependencies {
     }
     compile deps.sparkCore
     compile deps.commonsCli
+    
+    testCompile("ch.vorburger.mariaDB4j:mariaDB4j:2.3.0")
 }
 
 /**
