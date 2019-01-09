@@ -22,12 +22,10 @@ public class PentahoJobRunnerMainTest {
     KettleEnvironment.init(false);
 
     testProps = new Properties();
-    testProps.put("pentahojob.file", "src/test/resources/pentahoetl/parameterized_job.kjb");
-    testProps.put("other_namenodes", "xxxxxxx");
-    testProps.put("pentahojob.level", "Detailed");
-    testProps.put("pentahojob.param.DEMO_PARAMETER_1", "Detailed");
-    testProps.put("pentahojob.param.abc_2", "xxxxxxx");
-    testProps.put("sgddsg.param.abc_2", "xxxxxxx");
+    testProps.put("pentaho.file", "src/test/resources/pentaho/parameterized_job.kjb");
+    testProps.put("pentaho.param", "level=Detailed");
+    testProps.put("pentaho.param", "DEMO_PARAMETER_1=Detailed");
+    testProps.put("pentaho.param", "abc_2=xxxxxxx");
   }
 
   @Test

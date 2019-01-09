@@ -15,6 +15,7 @@
  */
 package azkaban.jobtype;
 
+import java.io.File;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
@@ -50,12 +51,22 @@ public class PentahoJobRunnerMain {
   public static void main(final String[] args) throws Exception {
 
     Properties jobProps = HadoopSecureWrapperUtils.loadAzkabanProps();
-    
+
     Enumeration<?> e = jobProps.propertyNames();
     while (e.hasMoreElements()) {
       String key = (String) e.nextElement();
       logger.info(key +": "+jobProps.getProperty(key));
     }
+
+    assert
+        jobProps.containsKey("pentahojob.data_integration_root_dir") :
+        "please set pentahojob.data_integration_root_dir parameter in plugin.properties";
+    // load pentaho libs dynamically in main class!
+
+    System.setProperty("KETTLE_PLUGIN_BASE_FOLDERS","pentahojob.data_integration_root_dir");
+    // manualy loading a plugin.
+    // StepPluginType.getInstance().getPluginFolders().add( new PluginFolder( "<path to the plugin folder>" , false, true ) );
+    logger.info(getPentahoProperties(jobProps));
     runJob(args, jobProps);
   }
 
@@ -258,6 +269,17 @@ public class PentahoJobRunnerMain {
       String output = String.format("Job parameter %s [description: \"%s\", default: \"%s\"]",
           parameterName, description, defaultValue);
     }
+  }
+
+  static String getPentahoProperties(Properties jobProps){
+
+    String propertiesFile;
+    if (jobProps.containsKey("pentahojob.data_integration_properties_file")){
+      propertiesFile= jobProps.getProperty("pentahojob.data_integration_properties_file");
+    }else {
+      propertiesFile= System.getProperty("user.home")+".kettle/kettle.properties";
+    }
+    return propertiesFile;
   }
 
 }
