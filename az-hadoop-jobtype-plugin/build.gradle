@@ -17,6 +17,10 @@
 apply plugin: 'distribution'
 
 repositories {
+    mavenCentral()
+    maven {
+      url 'https://mvnrepository.com/artifact/ch.vorburger.mariaDB4j/mariaDB4j'
+    }
     maven {
       url 'http://nexus.pentaho.org/content/groups/omni'
     }
