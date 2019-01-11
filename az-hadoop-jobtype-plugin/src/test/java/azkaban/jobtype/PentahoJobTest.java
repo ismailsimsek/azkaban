@@ -1,15 +1,11 @@
 package azkaban.jobtype;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
 
-import java.io.IOException;
-import java.util.Properties;
+import azkaban.utils.Props;
 import org.apache.log4j.Logger;
 import org.junit.Before;
 import org.junit.Test;
-import org.pentaho.di.core.KettleEnvironment;
-import org.pentaho.di.core.exception.KettleException;
-import azkaban.utils.Props;
 
 public class PentahoJobTest {
 
@@ -21,7 +17,15 @@ public class PentahoJobTest {
 
   @Before
   public void beforeMethod() throws Exception {
-    KettleEnvironment.init(false);
+  }
+
+
+  @Test
+  public void getJavaClass() {
+  }
+
+  @Test
+  public void createCommandLine() throws Exception {
     String expectedCMD = "";
 
     testJobProps.put("Xms", "2G");
@@ -34,16 +38,6 @@ public class PentahoJobTest {
     PentahoJob job = new PentahoJob("-1",testSysProps,testJobProps,logger);
     logger.info(job.createCommandLine());
     assertEquals(expectedCMD,job.createCommandLine());
-  }
-
-
-  @Test
-  public void getJavaClass() {
-  }
-
-  @Test
-  public void createCommandLine() {
-
 
   }
 }

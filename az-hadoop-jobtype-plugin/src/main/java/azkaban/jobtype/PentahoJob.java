@@ -29,8 +29,8 @@ import org.apache.log4j.Logger;
 
 class PentahoJob extends JavaProcessJob {
 
-  public static final String DEFAULT_INITIAL_MEMORY_SIZE = "2G";
-  public static final String DEFAULT_MAX_MEMORY_SIZE = "4G";
+  private static final String DEFAULT_INITIAL_MEMORY_SIZE = "2G";
+  private static final String DEFAULT_MAX_MEMORY_SIZE = "4G";
   private static final String DATA_INTEGRATION_ROOT_DIR = "pentaho.data_integration_root_dir";
   private static final String PENTAHO_FILE = "pentaho.file";
   private static final String PENTAHO_PARAM = "pentaho.param";
