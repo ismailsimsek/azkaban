@@ -1,0 +1,13 @@
+type=pentaho
+
+pentaho.file=etl/parameterized_job.kjb
+pentaho.level=Detailed
+pentaho.param.DEMO_PARAMETER_1=Detailed
+pentaho.param.DEMO_PARAMETER_2=value_etl_param2
+pentaho.param.DEMO_PARAMETER_3=value_etl_param3
+pentaho.data_integration_root_dir=/Users/isimsek/pentaho/data-integration
+
+dependencies=
+
+
+
