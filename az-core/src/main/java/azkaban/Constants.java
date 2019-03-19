@@ -92,6 +92,12 @@ public class Constants {
 
     // Configures Azkaban to use new polling model for dispatching
     public static final String AZKABAN_POLL_MODEL = "azkaban.poll.model";
+    public static final String AZKABAN_POLLING_INTERVAL_MS = "azkaban.polling.interval.ms";
+
+    // Configures properties for Azkaban executor health check
+    public static final String AZKABAN_EXECUTOR_HEALTHCHECK_INTERVAL_MIN = "azkaban.executor.healthcheck.interval.min";
+    public static final String AZKABAN_EXECUTOR_MAX_FAILURE_COUNT = "azkaban.executor.max.failurecount";
+    public static final String AZKABAN_ADMIN_ALERT_EMAIL = "azkaban.admin.alert.email";
 
     // Configures Azkaban Flow Version in project YAML file
     public static final String AZKABAN_FLOW_VERSION = "azkaban-flow-version";
@@ -227,8 +233,9 @@ public class Constants {
 
     public static final String SESSION_TIME_TO_LIVE = "session.time.to.live";
 
-    // allowed max size of shared project dir in MB
-    public static final String PROJECT_DIR_MAX_SIZE_IN_MB = "azkaban.project_cache_max_size_in_mb";
+    // allowed max size of shared project dir (percentage of partition size), e.g 0.8
+    public static final String PROJECT_CACHE_SIZE_PERCENTAGE = "azkaban"
+        + ".project_cache_size_percentage_of_disk";
 
     // how many older versions of project files are kept in DB before deleting them
     public static final String PROJECT_VERSION_RETENTION = "project.version.retention";

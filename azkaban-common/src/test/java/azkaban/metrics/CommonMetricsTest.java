@@ -16,9 +16,10 @@
 
 package azkaban.metrics;
 
-import static org.junit.Assert.assertEquals;
+import static org.assertj.core.api.Assertions.*;
 
 import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.Snapshot;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -37,10 +38,39 @@ public class CommonMetricsTest {
 
   @Test
   public void testOOMWaitingJobMetrics() {
-    final String metricName = "OOM-waiting-job-count";
+    final String metricName = CommonMetrics.OOM_WAITING_JOB_COUNT_NAME;
 
-    assertEquals(0, this.testUtil.getGaugeValue(metricName));
+    assertThat(this.testUtil.getGaugeValue(metricName)).isEqualTo(0);
     this.metrics.incrementOOMJobWaitCount();
-    assertEquals(1, this.testUtil.getGaugeValue(metricName));
+    assertThat(this.testUtil.getGaugeValue(metricName)).isEqualTo(1);
+  }
+
+  @Test
+  public void testSubmitMetrics() {
+    assertThat(this.testUtil.getMeterValue(CommonMetrics.SUBMIT_FLOW_FAIL_METER_NAME)).isEqualTo(0);
+    this.metrics.markSubmitFlowFail();
+    assertThat(this.testUtil.getMeterValue(CommonMetrics.SUBMIT_FLOW_FAIL_METER_NAME)).isEqualTo(1);
+
+    assertThat(this.testUtil.getMeterValue(CommonMetrics.SUBMIT_FLOW_SKIP_METER_NAME)).isEqualTo(0);
+    this.metrics.markSubmitFlowSkip();
+    assertThat(this.testUtil.getMeterValue(CommonMetrics.SUBMIT_FLOW_SKIP_METER_NAME)).isEqualTo(1);
+
+    assertThat(this.testUtil.getMeterValue(CommonMetrics.SUBMIT_FLOW_SUCCESS_METER_NAME)).isEqualTo(0);
+    this.metrics.markSubmitFlowSuccess();
+    assertThat(this.testUtil.getMeterValue(CommonMetrics.SUBMIT_FLOW_SUCCESS_METER_NAME)).isEqualTo(1);
+  }
+
+  @Test
+  public void testQueueWaitMetrics() {
+    final double delta = 0.001;
+
+    this.metrics.addQueueWait(500L);
+    this.metrics.addQueueWait(600L);
+    this.metrics.addQueueWait(1000L);
+    Snapshot snapshot = this.testUtil.getHistogramSnapshot(CommonMetrics.QUEUE_WAIT_HISTOGRAM_NAME);
+    assertThat(snapshot.getMedian()).isCloseTo(600.0, within(delta));
+    assertThat(snapshot.getMean()).isCloseTo(700.0, within(delta));
+    assertThat(snapshot.getMin()).isEqualTo(500);
+    assertThat( snapshot.getMax()).isEqualTo(1000);
   }
 }

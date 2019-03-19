@@ -134,18 +134,6 @@ public class ExecutorManager extends EventHandler implements
     this.executorInfoRefresherService = createExecutorInfoRefresherService();
   }
 
-  // TODO move to some common place
-  static boolean isFinished(final ExecutableFlow flow) {
-    switch (flow.getStatus()) {
-      case SUCCEEDED:
-      case FAILED:
-      case KILLED:
-        return true;
-      default:
-        return false;
-    }
-  }
-
   private int getMaxConcurrentRunsOneFlow(final Props azkProps) {
     // The default threshold is set to 30 for now, in case some users are affected. We may
     // decrease this number in future, to better prevent DDos attacks.
@@ -176,6 +164,7 @@ public class ExecutorManager extends EventHandler implements
     this.queueProcessor = setupQueueProcessor();
   }
 
+  @Override
   public void start() throws ExecutorManagerException {
     initialize();
     this.updaterThread.start();
@@ -571,11 +560,7 @@ public class ExecutorManager extends EventHandler implements
   }
 
   /**
-   * Get execution Ids of all active (running, non-dispatched) flows
-   *
-   * {@inheritDoc}
-   *
-   * @see azkaban.executor.ExecutorManagerAdapter#getRunningFlows()
+   * Get execution Ids of all running (unfinished) flows
    */
   public String getRunningFlowIds() {
     final List<Integer> allIds = new ArrayList<>();
@@ -587,10 +572,6 @@ public class ExecutorManager extends EventHandler implements
 
   /**
    * Get execution Ids of all non-dispatched flows
-   *
-   * {@inheritDoc}
-   *
-   * @see azkaban.executor.ExecutorManagerAdapter#getRunningFlows()
    */
   public String getQueuedFlowIds() {
     final List<Integer> allIds = new ArrayList<>();
@@ -599,6 +580,10 @@ public class ExecutorManager extends EventHandler implements
     return allIds.toString();
   }
 
+  /**
+   * Get the number of non-dispatched flows. {@inheritDoc}
+   */
+  @Override
   public long getQueuedFlowSize() {
     return this.queuedFlows.size();
   }
@@ -964,6 +949,7 @@ public class ExecutorManager extends EventHandler implements
                     "Failed to submit %s for project %s. Azkaban has overrun its webserver queue capacity",
                     flowId, exflow.getProjectName());
         logger.error(message);
+        this.commonMetrics.markSubmitFlowFail();
       } else {
         final int projectId = exflow.getProjectId();
         exflow.setSubmitUser(userId);
@@ -983,6 +969,7 @@ public class ExecutorManager extends EventHandler implements
 
         if (!running.isEmpty()) {
           if (running.size() > this.maxConcurrentRunsOneFlow) {
+            this.commonMetrics.markSubmitFlowSkip();
             throw new ExecutorManagerException("Flow " + flowId
                 + " has more than " + this.maxConcurrentRunsOneFlow + " concurrent runs. Skipping",
                 ExecutorManagerException.Reason.SkippedExecution);
@@ -998,6 +985,7 @@ public class ExecutorManager extends EventHandler implements
                     + options.getPipelineLevel() + ". \n";
           } else if (options.getConcurrentOption().equals(
               ExecutionOptions.CONCURRENT_OPTION_SKIP)) {
+            this.commonMetrics.markSubmitFlowSkip();
             throw new ExecutorManagerException("Flow " + flowId
                 + " is already running. Skipping execution.",
                 ExecutorManagerException.Reason.SkippedExecution);
@@ -1027,6 +1015,7 @@ public class ExecutorManager extends EventHandler implements
         this.executorLoader.addActiveExecutableReference(reference);
         this.queuedFlows.enqueue(exflow, reference);
         message += "Execution queued successfully with exec id " + exflow.getExecutionId();
+        this.commonMetrics.markSubmitFlowSuccess();
       }
       return message;
     }
@@ -1112,7 +1101,7 @@ public class ExecutorManager extends EventHandler implements
 
   /**
    * Calls executor to dispatch the flow, update db to assign the executor and in-memory state of
-   * executableFlow
+   * executableFlow.
    */
   private void dispatch(final ExecutionReference reference, final ExecutableFlow exflow,
       final Executor choosenExecutor) throws ExecutorManagerException {

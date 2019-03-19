@@ -23,10 +23,12 @@ import azkaban.AzkabanCommonModule;
 import azkaban.Constants;
 import azkaban.Constants.ConfigurationKeys;
 import azkaban.database.AzkabanDatabaseSetup;
+import azkaban.executor.ExecutionController;
 import azkaban.executor.ExecutorManager;
 import azkaban.executor.ExecutorManagerAdapter;
 import azkaban.flowtrigger.FlowTriggerService;
 import azkaban.flowtrigger.quartz.FlowTriggerScheduler;
+import azkaban.jmx.JmxExecutionController;
 import azkaban.jmx.JmxExecutorManager;
 import azkaban.jmx.JmxJettyServer;
 import azkaban.jmx.JmxTriggerManager;
@@ -230,10 +232,7 @@ public class AzkabanWebServer extends AzkabanServer {
     /* This creates the Web Server instance */
     app = webServer;
 
-    // Todo jamiesjc: also start the threads in ExecutionController if needed.
-    if (webServer.executorManagerAdapter instanceof ExecutorManager) {
-      ((ExecutorManager) webServer.executorManagerAdapter).start();
-    }
+    webServer.executorManagerAdapter.start();
 
     // TODO refactor code into ServerProvider
     webServer.prepareAndStartServer();
@@ -597,8 +596,7 @@ public class AzkabanWebServer extends AzkabanServer {
 
   private void startWebMetrics() throws Exception {
     this.metricsManager
-        .addGauge("WEB-NumQueuedFlows", ((ExecutorManager) this
-            .executorManagerAdapter)::getQueuedFlowSize);
+        .addGauge("WEB-NumQueuedFlows", this.executorManagerAdapter::getQueuedFlowSize);
     /*
      * TODO: Currently {@link ExecutorManager#getRunningFlows()} includes both running and non-dispatched flows.
      * Originally we would like to do a subtraction between getRunningFlows and {@link ExecutorManager#getQueuedFlowSize()},
@@ -606,9 +604,8 @@ public class AzkabanWebServer extends AzkabanServer {
      * However, both getRunningFlows and getQueuedFlowSize are not synchronized, such that we can not make
      * a thread safe subtraction. We need to fix this in the future.
      */
-    this.metricsManager
-        .addGauge("WEB-NumRunningFlows",
-            () -> ((ExecutorManager) this.executorManagerAdapter).getRunningFlows().size());
+    this.metricsManager.addGauge("WEB-NumRunningFlows",
+        () -> (this.executorManagerAdapter.getRunningFlows().size()));
 
     logger.info("starting reporting Web Server Metrics");
     this.metricsManager.startReporting("AZ-WEB", this.props);
@@ -691,11 +688,13 @@ public class AzkabanWebServer extends AzkabanServer {
 
     registerMbean("jetty", new JmxJettyServer(this.server));
     registerMbean("triggerManager", new JmxTriggerManager(this.triggerManager));
-    // Todo jamiesjc: enable Jmx for executionController later
-    if (this.executorManagerAdapter != null
-        && this.executorManagerAdapter instanceof ExecutorManager) {
+
+    if (this.executorManagerAdapter instanceof ExecutorManager) {
       registerMbean("executorManager",
           new JmxExecutorManager((ExecutorManager) this.executorManagerAdapter));
+    } else if (this.executorManagerAdapter instanceof ExecutionController) {
+      registerMbean("executionController", new JmxExecutionController((ExecutionController) this
+          .executorManagerAdapter));
     }
 
     // Register Log4J loggers as JMX beans so the log level can be

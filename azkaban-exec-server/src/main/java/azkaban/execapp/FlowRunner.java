@@ -24,6 +24,7 @@ import static azkaban.project.DirectoryYamlFlowLoader.CONDITION_ON_JOB_STATUS_PA
 import static azkaban.project.DirectoryYamlFlowLoader.CONDITION_VARIABLE_REPLACEMENT_PATTERN;
 
 import azkaban.Constants;
+import azkaban.Constants.ConfigurationKeys;
 import azkaban.Constants.JobProperties;
 import azkaban.ServiceProvider;
 import azkaban.event.Event;
@@ -35,9 +36,11 @@ import azkaban.execapp.event.JobCallbackManager;
 import azkaban.execapp.jmx.JmxJobMBeanManager;
 import azkaban.execapp.metric.NumFailedJobMetric;
 import azkaban.execapp.metric.NumRunningJobMetric;
+import azkaban.executor.AlerterHolder;
 import azkaban.executor.ExecutableFlow;
 import azkaban.executor.ExecutableFlowBase;
 import azkaban.executor.ExecutableNode;
+import azkaban.executor.ExecutionControllerUtils;
 import azkaban.executor.ExecutionOptions;
 import azkaban.executor.ExecutionOptions.FailureAction;
 import azkaban.executor.ExecutorLoader;
@@ -57,6 +60,7 @@ import azkaban.spi.AzkabanEventReporter;
 import azkaban.spi.EventType;
 import azkaban.utils.Props;
 import azkaban.utils.SwapQueue;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.io.Files;
@@ -120,6 +124,7 @@ public class FlowRunner extends EventHandler implements Runnable {
   // Thread safe swap queue for finishedExecutions.
   private final SwapQueue<ExecutableNode> finishedNodes;
   private final AzkabanEventReporter azkabanEventReporter;
+  private final AlerterHolder alerterHolder;
   private Logger logger;
   private Appender flowAppender;
   private File logFile;
@@ -148,10 +153,11 @@ public class FlowRunner extends EventHandler implements Runnable {
    */
   public FlowRunner(final ExecutableFlow flow, final ExecutorLoader executorLoader,
       final ProjectLoader projectLoader, final JobTypeManager jobtypeManager,
-      final Props azkabanProps, final AzkabanEventReporter azkabanEventReporter)
+      final Props azkabanProps, final AzkabanEventReporter azkabanEventReporter, final
+  AlerterHolder alerterHolder)
       throws ExecutorManagerException {
     this(flow, executorLoader, projectLoader, jobtypeManager, null, azkabanProps,
-        azkabanEventReporter);
+        azkabanEventReporter, alerterHolder);
   }
 
   /**
@@ -160,7 +166,7 @@ public class FlowRunner extends EventHandler implements Runnable {
   public FlowRunner(final ExecutableFlow flow, final ExecutorLoader executorLoader,
       final ProjectLoader projectLoader, final JobTypeManager jobtypeManager,
       final ExecutorService executorService, final Props azkabanProps,
-      final AzkabanEventReporter azkabanEventReporter)
+      final AzkabanEventReporter azkabanEventReporter, final AlerterHolder alerterHolder)
       throws ExecutorManagerException {
     this.execId = flow.getExecutionId();
     this.flow = flow;
@@ -177,6 +183,8 @@ public class FlowRunner extends EventHandler implements Runnable {
     this.executorService = executorService;
     this.finishedNodes = new SwapQueue<>();
     this.azkabanProps = azkabanProps;
+    this.alerterHolder = alerterHolder;
+
     // Add the flow listener only if a non-null eventReporter is available.
     if (azkabanEventReporter != null) {
       this.addListener(this.flowListener);
@@ -212,6 +220,11 @@ public class FlowRunner extends EventHandler implements Runnable {
 
   public File getExecutionDir() {
     return this.execDir;
+  }
+
+  @VisibleForTesting
+  AlerterHolder getAlerterHolder() {
+    return this.alerterHolder;
   }
 
   @Override
@@ -258,6 +271,13 @@ public class FlowRunner extends EventHandler implements Runnable {
       } finally {
         this.fireEventListeners(
             Event.create(this, EventType.FLOW_FINISHED, new EventData(this.flow)));
+        // In polling model, executor will be responsible for sending alerting emails when a flow
+        // finishes.
+        // Todo jamiesjc: switch to event driven model and alert on FLOW_FINISHED event.
+        if (this.azkabanProps.getBoolean(ConfigurationKeys.AZKABAN_POLL_MODEL, false)) {
+          ExecutionControllerUtils.alertUserOnFlowFinished(this.flow, this.alerterHolder,
+              ExecutionControllerUtils.getFinalizeFlowReasons("Flow finished", null));
+        }
       }
     }
   }
@@ -534,7 +554,7 @@ public class FlowRunner extends EventHandler implements Runnable {
     }
 
     if (shouldFail) {
-      propagateStatus(node.getParentFlow(),
+      propagateStatusAndAlert(node.getParentFlow(),
           node.getStatus() == Status.KILLED ? Status.KILLED : Status.FAILED_FINISHING);
       if (this.failureAction == FailureAction.CANCEL_ALL) {
         this.kill();
@@ -610,12 +630,29 @@ public class FlowRunner extends EventHandler implements Runnable {
     }
   }
 
-  private void propagateStatus(final ExecutableFlowBase base, final Status status) {
+  /**
+   * Recursively propagate status to parent flow. Alert on first error of the flow in new AZ
+   * dispatching design.
+   *
+   * @param base the base flow
+   * @param status the status to be propagated
+   */
+  private void propagateStatusAndAlert(final ExecutableFlowBase base, final Status status) {
     if (!Status.isStatusFinished(base.getStatus()) && base.getStatus() != Status.KILLING) {
       this.logger.info("Setting " + base.getNestedId() + " to " + status);
-      base.setStatus(status);
+      boolean shouldAlert = false;
+      if (base.getStatus() != status) {
+        base.setStatus(status);
+        shouldAlert = true;
+      }
       if (base.getParentFlow() != null) {
-        propagateStatus(base.getParentFlow(), status);
+        propagateStatusAndAlert(base.getParentFlow(), status);
+      } else if (this.azkabanProps.getBoolean(ConfigurationKeys.AZKABAN_POLL_MODEL, false)) {
+        // Alert on the root flow if the first error is encountered.
+        // Todo jamiesjc: Add a new FLOW_STATUS_CHANGED event type and alert on that event.
+        if (shouldAlert && base.getStatus() == Status.FAILED_FINISHING) {
+          ExecutionControllerUtils.alertUserOnFirstError((ExecutableFlow) base, this.alerterHolder);
+        }
       }
     }
   }

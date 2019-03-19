@@ -36,7 +36,9 @@ public interface ExecutorManagerAdapter {
 
   public List<Integer> getRunningFlows(int projectId, String flowId);
 
-  public List<ExecutableFlow> getRunningFlows() throws IOException;
+  public List<ExecutableFlow> getRunningFlows();
+
+  public long getQueuedFlowSize();
 
   /**
    * <pre>
@@ -113,6 +115,8 @@ public interface ExecutorManagerAdapter {
 
   public Map<String, Object> callExecutorJMX(String hostPort, String action,
       String mBean) throws IOException;
+
+  public void start() throws ExecutorManagerException;
 
   public void shutdown();
 
