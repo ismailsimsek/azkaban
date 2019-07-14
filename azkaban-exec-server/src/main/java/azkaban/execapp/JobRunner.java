@@ -49,7 +49,6 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
-
 import org.apache.kafka.log4jappender.KafkaLog4jAppender;
 import org.apache.log4j.Appender;
 import org.apache.log4j.EnhancedPatternLayout;
@@ -106,10 +105,11 @@ public class JobRunner extends EventHandler implements Runnable {
 
     this.executionId = node.getParentFlow().getExecutionId();
     this.jobId = node.getId();
+
     this.loader = loader;
     this.jobtypeManager = jobtypeManager;
     this.azkabanProps = azkabanProps;
-    final String jobLogLayout = props.getString(
+    final String jobLogLayout = this.props.getString(
         JobProperties.JOB_LOG_LAYOUT, DEFAULT_LAYOUT);
 
     this.loggerLayout = new EnhancedPatternLayout(jobLogLayout);
@@ -734,7 +734,7 @@ public class JobRunner extends EventHandler implements Runnable {
 
     String jobJVMArgs =
         String.format(
-            "-Dazkaban.flowid=%s -Dazkaban.execid=%s -Dazkaban.jobid=%s",
+            "'-Dazkaban.flowid=%s' '-Dazkaban.execid=%s' '-Dazkaban.jobid=%s'",
             flowName, this.executionId, jobId);
 
     final String previousJVMArgs = this.props.get(JavaProcessJob.JVM_PARAMS);
@@ -758,10 +758,10 @@ public class JobRunner extends EventHandler implements Runnable {
       this.props.put(CommonJobProperties.EXECUTION_LINK,
           String.format("%s/executor?execid=%d", baseURL, this.executionId));
       this.props.put(CommonJobProperties.JOBEXEC_LINK, String.format(
-          "%s/executor?execid=%d&job=%s", baseURL, this.executionId, this.jobId));
+          "%s/executor?execid=%d&job=%s", baseURL, this.executionId, this.node.getNestedId()));
       this.props.put(CommonJobProperties.ATTEMPT_LINK, String.format(
           "%s/executor?execid=%d&job=%s&attempt=%d", baseURL, this.executionId,
-          this.jobId, this.node.getAttempt()));
+          this.node.getNestedId(), this.node.getAttempt()));
       this.props.put(CommonJobProperties.WORKFLOW_LINK, String.format(
           "%s/manager?project=%s&flow=%s", baseURL, projectName, flowName));
       this.props.put(CommonJobProperties.JOB_LINK, String.format(
@@ -841,8 +841,10 @@ public class JobRunner extends EventHandler implements Runnable {
   }
 
   public void killBySLA() {
-    kill();
-    this.getNode().setKilledBySLA(true);
+    synchronized (this.syncObject) {
+      kill();
+      this.getNode().setKilledBySLA(true);
+    }
   }
 
   public void kill() {

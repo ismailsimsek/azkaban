@@ -13,7 +13,6 @@
  * License for the specific language governing permissions and limitations under
  * the License.
  */
-
 package azkaban.utils;
 
 import java.io.BufferedInputStream;
@@ -22,22 +21,30 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.StringTokenizer;
+import org.apache.commons.fileupload.util.Streams;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
@@ -45,7 +52,7 @@ import org.apache.log4j.Logger;
  */
 public class FileIOUtils {
 
-  private final static Logger logger = Logger.getLogger(FileIOUtils.class);
+  private static final Logger log = LoggerFactory.getLogger(FileIOUtils.class);
 
   /**
    * Check if a directory is writable
@@ -72,17 +79,17 @@ public class FileIOUtils {
     return true;
   }
 
-  public static int getFileCount(final File file) {
-    final File[] files = file.listFiles();
-    int count = 0;
-    for (final File f : files) {
-      if (f.isDirectory()) {
-        count += getFileCount(f);
-      } else {
-        count++;
+  /**
+   * Delete a directory, log the error if deletion fails.
+   */
+  public static void deleteDirectorySilently(final File dir) {
+    if (dir != null) {
+      try {
+        FileUtils.deleteDirectory(dir);
+      } catch (final IOException e) {
+        log.error("error when deleting dir {}", dir, e);
       }
     }
-    return count;
   }
 
 
@@ -98,7 +105,7 @@ public class FileIOUtils {
         .newBufferedWriter(filePath, StandardCharsets.UTF_8)) {
       writer.write(String.valueOf(num));
     } catch (final IOException e) {
-      logger.error(String.format("Failed to write the number %s to the file %s", num, filePath), e);
+      log.error("Failed to write the number {} to the file {}", num, filePath, e);
       throw e;
     }
   }
@@ -119,9 +126,10 @@ public class FileIOUtils {
   }
 
   public static String getSourcePathFromClass(final Class<?> containedClass) {
-    File file =
-        new File(containedClass.getProtectionDomain().getCodeSource()
-            .getLocation().getPath());
+    final String containedClassPath = containedClass.getProtectionDomain().getCodeSource()
+        .getLocation().getPath();
+
+    File file = new File(containedClassPath);
 
     if (!file.isDirectory() && file.getName().endsWith(".class")) {
       final String name = containedClass.getName();
@@ -132,11 +140,66 @@ public class FileIOUtils {
       }
       return file.getPath();
     } else {
-      return containedClass.getProtectionDomain().getCodeSource().getLocation()
-          .getPath();
+      return containedClassPath;
     }
   }
 
+  /**
+   * Load output file into a Props object
+   *
+   * @param file output properties file
+   * @return Props object
+   */
+  public static Props loadOutputFileProps(final File file) {
+    InputStream reader = null;
+    try {
+      log.info("output properties file=" + file.getAbsolutePath());
+      reader = new BufferedInputStream(new FileInputStream(file));
+      final Props outputProps = new Props();
+      final String content = Streams.asString(reader).trim();
+
+      if (!content.isEmpty()) {
+        final Map<String, Object> propMap =
+            (Map<String, Object>) JSONUtils.parseJSONFromString(content);
+
+        for (final Map.Entry<String, Object> entry : propMap.entrySet()) {
+          outputProps.put(entry.getKey(), entry.getValue().toString());
+        }
+      }
+      return outputProps;
+    } catch (final FileNotFoundException e) {
+      log.info(
+          String.format("File[%s] wasn't found, returning empty props.", file)
+      );
+      return new Props();
+    } catch (final Exception e) {
+      log.error(
+          "Exception thrown when trying to load output file props.  Returning empty Props instead of failing. Is this really the best thing to do?",
+          e);
+      return new Props();
+    } finally {
+      IOUtils.closeQuietly(reader);
+    }
+  }
+
+  /**
+   * Create Temp File in a working directory
+   *
+   * @param prefix file prefix
+   * @param suffix file suffix
+   * @param workingDir working directory
+   * @return File handle
+   */
+  public static File createOutputPropsFile(final String prefix,
+      final String suffix, final String workingDir) {
+    try {
+      final File directory = new File(workingDir);
+      final File tempFile = File.createTempFile(prefix, suffix, directory);
+      return tempFile;
+    } catch (final IOException e) {
+      throw new RuntimeException("Failed to create temp output property file ", e);
+    }
+  }
 
   /**
    * Hard link files and recurse into directories.

@@ -20,7 +20,18 @@ public class ProcessFailureException extends RuntimeException {
 
   private static final long serialVersionUID = 1;
 
-  public ProcessFailureException() {
+  private final int exitCode;
+
+  public ProcessFailureException(final int exitCode) {
+    this.exitCode = exitCode;
   }
 
+  public int getExitCode() {
+    return this.exitCode;
+  }
+
+  @Override
+  public String getMessage() {
+    return "Process exited with code " + this.exitCode;
+  }
 }

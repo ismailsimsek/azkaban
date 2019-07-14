@@ -88,11 +88,38 @@ public class Constants {
   // The flow exec id for a flow trigger instance unable to trigger a flow yet
   public static final int FAILED_EXEC_ID = -2;
 
+  // Default locked flow error message
+  public static final String DEFAULT_LOCKED_FLOW_ERROR_MESSAGE =
+      "Flow %s in project %s is locked. This is either a repeatedly failing flow, or an ineffcient"
+          + " flow. Please refer to the Dr. Elephant report for this flow for more information.";
+
+  // Default maximum number of concurrent runs for a single flow
+  public static final int DEFAULT_MAX_ONCURRENT_RUNS_ONEFLOW = 30;
+
+  // How often executors will poll new executions in Poll Dispatch model
+  public static final int DEFAULT_AZKABAN_POLLING_INTERVAL_MS = 1000;
+
+  // Executors can use cpu load calculated from this period to take/skip polling turns
+  public static final int DEFAULT_AZKABAN_POLLING_CRITERIA_CPU_LOAD_PERIOD_SEC = 60;
+
   public static class ConfigurationKeys {
 
     // Configures Azkaban to use new polling model for dispatching
     public static final String AZKABAN_POLL_MODEL = "azkaban.poll.model";
     public static final String AZKABAN_POLLING_INTERVAL_MS = "azkaban.polling.interval.ms";
+    public static final String AZKABAN_POLLING_CRITERIA_FLOW_THREADS_AVAILABLE =
+        "azkaban.polling_criteria.flow_threads_available";
+    public static final String AZKABAN_POLLING_CRITERIA_MIN_FREE_MEMORY_GB =
+        "azkaban.polling_criteria.min_free_memory_gb";
+    public static final String AZKABAN_POLLING_CRITERIA_MAX_CPU_UTILIZATION_PCT =
+        "azkaban.polling_criteria.max_cpu_utilization_pct";
+    public static final String AZKABAN_POLLING_CRITERIA_CPU_LOAD_PERIOD_SEC =
+        "azkaban.polling_criteria.cpu_load_period_sec";
+
+    // Configures properties for Azkaban executor health check
+    public static final String AZKABAN_EXECUTOR_HEALTHCHECK_INTERVAL_MIN = "azkaban.executor.healthcheck.interval.min";
+    public static final String AZKABAN_EXECUTOR_MAX_FAILURE_COUNT = "azkaban.executor.max.failurecount";
+    public static final String AZKABAN_ADMIN_ALERT_EMAIL = "azkaban.admin.alert.email";
 
     // Configures Azkaban Flow Version in project YAML file
     public static final String AZKABAN_FLOW_VERSION = "azkaban-flow-version";
@@ -179,6 +206,8 @@ public class Constants {
     public static final String AZKABAN_EVENT_REPORTING_CLASS_PARAM =
         "azkaban.event.reporting.class";
     public static final String AZKABAN_EVENT_REPORTING_ENABLED = "azkaban.event.reporting.enabled";
+    // Comma separated list of properties to propagate from flow to Event reporter metadata
+    public static final String AZKABAN_EVENT_REPORTING_PROPERTIES_TO_PROPAGATE = "azkaban.event.reporting.propagateProperties";
     public static final String AZKABAN_EVENT_REPORTING_KAFKA_BROKERS =
         "azkaban.event.reporting.kafka.brokers";
     public static final String AZKABAN_EVENT_REPORTING_KAFKA_TOPIC =
@@ -213,6 +242,12 @@ public class Constants {
 
     public static final String USE_MULTIPLE_EXECUTORS = "azkaban.use.multiple.executors";
     public static final String MAX_CONCURRENT_RUNS_ONEFLOW = "azkaban.max.concurrent.runs.oneflow";
+
+    // list of whitelisted flows, with specific max number of concurrent runs. Format:
+    // <project 1>,<flow 1>,<number>;<project 2>,<flow 2>,<number>
+    public static final String CONCURRENT_RUNS_ONEFLOW_WHITELIST =
+        "azkaban.concurrent.runs.oneflow.whitelist";
+
     public static final String WEBSERVER_QUEUE_SIZE = "azkaban.webserver.queue.size";
     public static final String ACTIVE_EXECUTOR_REFRESH_IN_MS =
         "azkaban.activeexecutor.refresh.milisecinterval";
@@ -228,14 +263,23 @@ public class Constants {
 
     public static final String SESSION_TIME_TO_LIVE = "session.time.to.live";
 
-    // allowed max size of shared project dir in MB
-    public static final String PROJECT_DIR_MAX_SIZE_IN_MB = "azkaban.project_cache_max_size_in_mb";
+    // allowed max number of sessions per user per IP
+    public static final String MAX_SESSION_NUMBER_PER_IP_PER_USER = "azkaban.session"
+        + ".max_number_per_ip_per_user";
+
+    // allowed max size of shared project dir (percentage of partition size), e.g 0.8
+    public static final String PROJECT_CACHE_SIZE_PERCENTAGE = "azkaban"
+        + ".project_cache_size_percentage_of_disk";
 
     // how many older versions of project files are kept in DB before deleting them
     public static final String PROJECT_VERSION_RETENTION = "project.version.retention";
 
     // number of rows to be displayed on the executions page.
     public static final String DISPLAY_EXECUTION_PAGE_SIZE = "azkaban.display.execution_page_size";
+
+    // locked flow error message. Parameters passed in are the flow name and project name.
+    public static final String AZKABAN_LOCKED_FLOW_ERROR_MESSAGE =
+        "azkaban.locked.flow.error.message";
   }
 
   public static class FlowProperties {

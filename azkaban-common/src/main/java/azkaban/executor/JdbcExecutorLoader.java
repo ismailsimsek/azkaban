@@ -107,6 +107,12 @@ public class JdbcExecutorLoader implements ExecutorLoader {
   }
 
   @Override
+  public Map<Integer, Pair<ExecutionReference, ExecutableFlow>> fetchUnfinishedFlowsMetadata()
+      throws ExecutorManagerException {
+    return this.fetchActiveFlowDao.fetchUnfinishedFlowsMetadata();
+  }
+
+  @Override
   public Pair<ExecutionReference, ExecutableFlow> fetchActiveFlowByExecId(final int execId)
       throws ExecutorManagerException {
     return this.fetchActiveFlowDao.fetchActiveFlowByExecId(execId);
@@ -341,7 +347,13 @@ public class JdbcExecutorLoader implements ExecutorLoader {
   }
 
   @Override
-  public int selectAndUpdateExecution(final int executorId) throws ExecutorManagerException {
-    return this.executionFlowDao.selectAndUpdateExecution(executorId);
+  public int selectAndUpdateExecution(final int executorId, final boolean isActive)
+      throws ExecutorManagerException {
+    return this.executionFlowDao.selectAndUpdateExecution(executorId, isActive);
+  }
+
+  @Override
+  public void unsetExecutorIdForExecution(final int executionId) throws ExecutorManagerException {
+    this.executionFlowDao.unsetExecutorIdForExecution(executionId);
   }
 }

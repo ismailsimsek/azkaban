@@ -13,7 +13,6 @@
  * License for the specific language governing permissions and limitations under
  * the License.
  */
-
 package azkaban.trigger.builtin;
 
 import azkaban.executor.ExecutableFlow;
@@ -32,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import org.apache.log4j.Logger;
 
+
 public class ExecuteFlowAction implements TriggerAction {
 
   public static final String type = "ExecuteFlowAction";
@@ -48,18 +48,15 @@ public class ExecuteFlowAction implements TriggerAction {
   private String flowName;
   private String submitUser;
   private ExecutionOptions executionOptions = new ExecutionOptions();
-  private List<SlaOption> slaOptions;
 
   public ExecuteFlowAction(final String actionId, final int projectId, final String projectName,
-      final String flowName, final String submitUser, final ExecutionOptions executionOptions,
-      final List<SlaOption> slaOptions) {
+      final String flowName, final String submitUser, final ExecutionOptions executionOptions) {
     this.actionId = actionId;
     this.projectId = projectId;
     this.projectName = projectName;
     this.flowName = flowName;
     this.submitUser = submitUser;
     this.executionOptions = executionOptions;
-    this.slaOptions = slaOptions;
   }
 
   public static void setLogger(final Logger logger) {
@@ -108,16 +105,16 @@ public class ExecuteFlowAction implements TriggerAction {
       executionOptions =
           ExecutionOptions.createFromObject(jsonObj.get("executionOptions"));
     }
-    List<SlaOption> slaOptions = null;
     if (jsonObj.containsKey("slaOptions")) {
-      slaOptions = new ArrayList<>();
+      ArrayList<SlaOption> slaOptions = new ArrayList<>();
       final List<Object> slaOptionsObj = (List<Object>) jsonObj.get("slaOptions");
       for (final Object slaObj : slaOptionsObj) {
         slaOptions.add(SlaOption.fromObject(slaObj));
       }
+      executionOptions.setSlaOptions(slaOptions);
     }
     return new ExecuteFlowAction(actionId, projectId, projectName, flowName,
-        submitUser, executionOptions, slaOptions);
+        submitUser, executionOptions);
   }
 
   public String getProjectName() {
@@ -156,14 +153,6 @@ public class ExecuteFlowAction implements TriggerAction {
     this.executionOptions = executionOptions;
   }
 
-  public List<SlaOption> getSlaOptions() {
-    return this.slaOptions;
-  }
-
-  protected void setSlaOptions(final List<SlaOption> slaOptions) {
-    this.slaOptions = slaOptions;
-  }
-
   @Override
   public String getType() {
     return type;
@@ -186,11 +175,8 @@ public class ExecuteFlowAction implements TriggerAction {
     if (this.executionOptions != null) {
       jsonObj.put("executionOptions", this.executionOptions.toObject());
     }
-    if (this.slaOptions != null) {
-      final List<Object> slaOptionsObj = new ArrayList<>();
-      for (final SlaOption sla : this.slaOptions) {
-        slaOptionsObj.add(sla.toObject());
-      }
+    List<Object> slaOptionsObj = SlaOption.convertToObjects(this.executionOptions.getSlaOptions());
+    if (slaOptionsObj != null) {
       jsonObj.put("slaOptions", slaOptionsObj);
     }
     return jsonObj;
@@ -218,11 +204,8 @@ public class ExecuteFlowAction implements TriggerAction {
     if (!this.executionOptions.isSuccessEmailsOverridden()) {
       this.executionOptions.setSuccessEmails(flow.getSuccessEmails());
     }
-    exflow.setExecutionOptions(this.executionOptions);
 
-    if (this.slaOptions != null && this.slaOptions.size() > 0) {
-      exflow.setSlaOptions(this.slaOptions);
-    }
+    exflow.setExecutionOptions(this.executionOptions);
 
     logger.info("Invoking flow " + project.getName() + "." + this.flowName);
     executorManagerAdapter.submitExecutableFlow(exflow, this.submitUser);
@@ -243,5 +226,4 @@ public class ExecuteFlowAction implements TriggerAction {
   public String getId() {
     return this.actionId;
   }
-
 }

@@ -42,6 +42,9 @@ public interface ExecutorLoader {
   Map<Integer, Pair<ExecutionReference, ExecutableFlow>> fetchUnfinishedFlows()
       throws ExecutorManagerException;
 
+  Map<Integer, Pair<ExecutionReference, ExecutableFlow>> fetchUnfinishedFlowsMetadata()
+      throws ExecutorManagerException;
+
   Pair<ExecutionReference, ExecutableFlow> fetchActiveFlowByExecId(int execId)
       throws ExecutorManagerException;
 
@@ -278,5 +281,9 @@ public interface ExecutorLoader {
   int removeExecutionLogsByTime(long millis)
       throws ExecutorManagerException;
 
-  int selectAndUpdateExecution(final int executorId) throws ExecutorManagerException;
+  void unsetExecutorIdForExecution(final int executionId) throws ExecutorManagerException;
+
+  int selectAndUpdateExecution(final int executorId, boolean isActive)
+      throws ExecutorManagerException;
+
 }
