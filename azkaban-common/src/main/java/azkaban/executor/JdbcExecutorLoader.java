@@ -85,7 +85,7 @@ public class JdbcExecutorLoader implements ExecutorLoader {
   @Override
   public List<Pair<ExecutionReference, ExecutableFlow>> fetchQueuedFlows()
       throws ExecutorManagerException {
-    return fetchQueuedFlows(Status.PREPARING);
+    return fetchQueuedFlows(Status.READY);
   }
 
   @Override
@@ -430,5 +430,11 @@ public class JdbcExecutorLoader implements ExecutorLoader {
   @Override
   public void unsetExecutorIdForExecution(final int executionId) throws ExecutorManagerException {
     this.executionFlowDao.unsetExecutorIdForExecution(executionId);
+  }
+
+  @Override
+  public int updateVersionSetId(final int executionId, final int versionSetId)
+      throws ExecutorManagerException {
+    return this.executionFlowDao.updateVersionSetId(executionId, versionSetId);
   }
 }

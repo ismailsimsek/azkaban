@@ -431,7 +431,7 @@ public class MockExecutorLoader implements ExecutorLoader {
   @Override
   public List<Pair<ExecutionReference, ExecutableFlow>> fetchQueuedFlows()
       throws ExecutorManagerException {
-    return fetchQueuedFlows(Status.PREPARING);
+    return fetchQueuedFlows(Status.READY);
   }
 
   @Override
@@ -571,6 +571,11 @@ public class MockExecutorLoader implements ExecutorLoader {
   @Override
   public void updateExecutableRamp(ExecutableRamp executableRamp) throws ExecutorManagerException {
 
+  }
+
+  @Override
+  public int updateVersionSetId(int executionId, int versionSetId) throws ExecutorManagerException {
+    return 0;
   }
 
   @Override
