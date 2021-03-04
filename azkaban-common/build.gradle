@@ -27,6 +27,7 @@ dependencies {
     compile project(':az-core')
     compile project(':azkaban-spi')
     compile project(':azkaban-db')
+    compile project(':cached-http-filesystem')
 
     compile deps.collections
     compile deps.dbcp2
@@ -42,6 +43,9 @@ dependencies {
     compile deps.jetty
     compile deps.jettyUtil
     compile deps.jopt
+    compile (deps.k8sClient) {
+        exclude module: 'builder-annotations'
+    }
     compile deps.mail
     compile deps.math3
     compile deps.metricsCore
@@ -49,7 +53,7 @@ dependencies {
     compile deps.mysqlConnector
     compile deps.snakeyaml
     compile deps.velocity
-    
+
   	compile group: 'org.apache.shiro', name: 'shiro-web', version: '1.4.0'
 	compile group: 'org.apache.shiro', name: 'shiro-core', version: '1.4.0'
     compile group: 'io.buji', name: 'buji-pac4j', version: '4.1.0'

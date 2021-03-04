@@ -16,6 +16,8 @@
 
 package azkaban.execapp;
 
+import static azkaban.common.ServletUtils.*;
+import static azkaban.server.HttpRequestUtils.*;
 import static java.util.Objects.requireNonNull;
 
 import azkaban.Constants;
@@ -33,6 +35,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import javax.servlet.ServletConfig;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
@@ -44,9 +48,9 @@ import org.codehaus.jackson.map.ObjectMapper;
 
 public class ExecutorServlet extends HttpServlet implements ConnectorParams {
 
-  public static final String JSON_MIME_TYPE = "application/json";
   private static final Logger logger = Logger.getLogger(ExecutorServlet.class
       .getName());
+  private static final long serialVersionUID = -3528600004096666451L;
   private AzkabanExecutorServer application;
   private FlowRunnerManager flowRunnerManager;
 
@@ -68,13 +72,7 @@ public class ExecutorServlet extends HttpServlet implements ConnectorParams {
     this.flowRunnerManager = this.application.getFlowRunnerManager();
   }
 
-  protected void writeJSON(final HttpServletResponse resp, final Object obj)
-      throws IOException {
-    resp.setContentType(JSON_MIME_TYPE);
-    final ObjectMapper mapper = new ObjectMapper();
-    final OutputStream stream = resp.getOutputStream();
-    mapper.writeValue(stream, obj);
-  }
+
 
   /**
    * @deprecated GET available for seamless upgrade. azkaban-web now uses POST.
@@ -96,55 +94,59 @@ public class ExecutorServlet extends HttpServlet implements ConnectorParams {
       throws IOException {
     final HashMap<String, Object> respMap = new HashMap<>();
     try {
-      if (!hasParam(req, ACTION_PARAM)) {
+      if (!hasParam(req, ConnectorParams.ACTION_PARAM)) {
         logger.error("Parameter action not set");
         respMap.put("error", "Parameter action not set");
       } else {
-        final String action = getParam(req, ACTION_PARAM);
-        if (action.equals(UPDATE_ACTION)) {
+        final String action = getParam(req, ConnectorParams.ACTION_PARAM);
+        if (action.equals(ConnectorParams.UPDATE_ACTION)) {
           handleAjaxUpdateRequest(req, respMap);
-        } else if (action.equals(PING_ACTION)) {
-          respMap.put("status", "alive");
-        } else if (action.equals(RELOAD_JOBTYPE_PLUGINS_ACTION)) {
+        } else if (action.equals(ConnectorParams.PING_ACTION)) {
+          respMap.put(ConnectorParams.STATUS_PARAM, ConnectorParams.RESPONSE_ALIVE);
+        } else if (action.equals(ConnectorParams.RELOAD_JOBTYPE_PLUGINS_ACTION)) {
           logger.info("Reloading Jobtype plugins");
           handleReloadJobTypePlugins(respMap);
-        } else if (action.equals(ACTIVATE)) {
+        } else if (action.equals(ConnectorParams.ACTIVATE)) {
           logger.warn("Setting ACTIVE flag to true");
           setActive(true, respMap);
-        } else if (action.equals(GET_STATUS)) {
+        } else if (action.equals(ConnectorParams.GET_STATUS)) {
           logger.debug("Get Executor Status: ");
           getStatus(respMap);
-        } else if (action.equals(DEACTIVATE)) {
+        } else if (action.equals(ConnectorParams.DEACTIVATE)) {
           logger.warn("Setting ACTIVE flag to false");
           setActive(false, respMap);
-        } else if (action.equals(SHUTDOWN)) {
+        } else if (action.equals(ConnectorParams.SHUTDOWN)) {
           shutdown(respMap);
+        } else if (action.equals(ConnectorParams.MODIFY_PROPERTY_ACTION)) {
+          String propName = getParam(req, ConnectorParams.PROPERTY_NAME_PARAM);
+          String propValue = getParam(req, ConnectorParams.PROPERTY_VALUE_PARAM);
+          handleModifyProperty(propName, propValue, respMap);
         } else {
-          final int execid = Integer.parseInt(getParam(req, EXECID_PARAM));
-          final String user = getParam(req, USER_PARAM, null);
+          final int execid = Integer.parseInt(getParam(req, ConnectorParams.EXECID_PARAM));
+          final String user = getParam(req, ConnectorParams.USER_PARAM, null);
 
           logger.info("User " + user + " has called action " + action + " on "
               + execid);
-          if (action.equals(METADATA_ACTION)) {
+          if (action.equals(ConnectorParams.METADATA_ACTION)) {
             handleFetchMetaDataEvent(execid, req, resp, respMap);
-          } else if (action.equals(LOG_ACTION)) {
+          } else if (action.equals(ConnectorParams.LOG_ACTION)) {
             handleFetchLogEvent(execid, req, resp, respMap);
-          } else if (action.equals(ATTACHMENTS_ACTION)) {
+          } else if (action.equals(ConnectorParams.ATTACHMENTS_ACTION)) {
             handleFetchAttachmentsEvent(execid, req, resp, respMap);
-          } else if (action.equals(EXECUTE_ACTION)) {
+          } else if (action.equals(ConnectorParams.EXECUTE_ACTION)) {
             handleAjaxExecute(req, respMap, execid);
-          } else if (action.equals(STATUS_ACTION)) {
+          } else if (action.equals(ConnectorParams.STATUS_ACTION)) {
             handleAjaxFlowStatus(respMap, execid);
-          } else if (action.equals(CANCEL_ACTION)) {
+          } else if (action.equals(ConnectorParams.CANCEL_ACTION)) {
             logger.info("Cancel called.");
             handleAjaxCancel(respMap, execid, user);
-          } else if (action.equals(PAUSE_ACTION)) {
+          } else if (action.equals(ConnectorParams.PAUSE_ACTION)) {
             logger.info("Paused called.");
             handleAjaxPause(respMap, execid, user);
-          } else if (action.equals(RESUME_ACTION)) {
+          } else if (action.equals(ConnectorParams.RESUME_ACTION)) {
             logger.info("Resume called.");
             handleAjaxResume(respMap, execid, user);
-          } else if (action.equals(MODIFY_EXECUTION_ACTION)) {
+          } else if (action.equals(ConnectorParams.MODIFY_EXECUTION_ACTION)) {
             logger.info("Modify Execution Action");
             handleModifyExecutionRequest(respMap, execid, user, req);
           } else {
@@ -155,21 +157,85 @@ public class ExecutorServlet extends HttpServlet implements ConnectorParams {
       }
     } catch (final Exception e) {
       logger.error(e.getMessage(), e);
-      respMap.put(RESPONSE_ERROR, e.getMessage());
+      respMap.put(ConnectorParams.RESPONSE_ERROR, e.getMessage());
     }
     writeJSON(resp, respMap);
     resp.flushBuffer();
   }
 
+  private void handleModifyProperty(@Nullable final String propName,
+      @Nullable final String propValue, final HashMap<String, Object> respMap)
+      throws ServletException {
+    if (propName == null || propValue == null) {
+      String errMsg =
+          String.format("Both %s and %s need to be provided for action %s. "  +
+              "(%s, %s) = (%s, %s)", ConnectorParams.PROPERTY_NAME_PARAM, ConnectorParams.PROPERTY_VALUE_PARAM,
+          ConnectorParams.MODIFY_PROPERTY_ACTION, ConnectorParams.PROPERTY_NAME_PARAM,
+          ConnectorParams.PROPERTY_VALUE_PARAM, propName, propValue);
+      logger.error(errMsg);
+      respMap.put(ConnectorParams.RESPONSE_ERROR, errMsg);
+      return;
+    }
+
+    if (propName.equals(ConnectorParams.POLLING_INTERVAL_MILLIS_PROPERTY_NAME)) {
+      modifyPollingInterval(propValue, respMap);
+    } else {
+      String errMsg = String.format("Modification of %s property is not supported.", propName);
+      logger.error(errMsg);
+      respMap.put(ConnectorParams.RESPONSE_ERROR, errMsg);
+    }
+  }
+
+  /**
+   * Modifies the time interval at which the executor is polling the queue for unassigned jobs, and
+   * assigning a job(s) to itself.
+   *
+   * @param newPollingIntervalMillis The desired polling interval. It needs to be a positive
+   *                                 integer (milliseconds) in String format.
+   * @param respMap The response map.
+   */
+
+  private void modifyPollingInterval(@Nonnull final String newPollingIntervalMillis,
+      final HashMap<String, Object> respMap) {
+    int pollingIntervalMillis = 0;
+    boolean isValidValue = false;
+    try {
+      pollingIntervalMillis = Integer.parseUnsignedInt(newPollingIntervalMillis);
+      isValidValue =  (pollingIntervalMillis > 0);
+    } catch (NumberFormatException ex) {
+      // isValidValue will continue to be false, which we will used for error handling.
+      // No need to do anything additional in the catch block.
+    }
+
+    if (!isValidValue) {
+      String errMsg = String.format("%s doesn't look like a positive integer." +
+              " (%s, %s) = (%s, %s)", newPollingIntervalMillis, ConnectorParams.PROPERTY_NAME_PARAM,
+          ConnectorParams.PROPERTY_VALUE_PARAM, ConnectorParams.POLLING_INTERVAL_MILLIS_PROPERTY_NAME,
+          newPollingIntervalMillis);
+      logger.error(errMsg);
+      respMap.put(ConnectorParams.RESPONSE_ERROR, errMsg);
+      return;
+    }
+
+    if (flowRunnerManager.changePollingInterval(pollingIntervalMillis)) {
+      respMap.put(ConnectorParams.STATUS_ACTION, String.format("Changed polling interval to %s ms",
+          newPollingIntervalMillis));
+    } else {
+      respMap.put(ConnectorParams.RESPONSE_ERROR, "Failed to change polling interval. Please check"
+          + " the logs for error messages from underlying functions. Please retry if existing "
+          + "schedule got canceled and new one didn't start.");
+    }
+  }
+
   private void handleModifyExecutionRequest(final Map<String, Object> respMap,
       final int execId, final String user, final HttpServletRequest req) throws ServletException {
-    if (!hasParam(req, MODIFY_EXECUTION_ACTION_TYPE)) {
-      respMap.put(RESPONSE_ERROR, "Modification type not set.");
+    if (!hasParam(req, ConnectorParams.MODIFY_EXECUTION_ACTION_TYPE)) {
+      respMap.put(ConnectorParams.RESPONSE_ERROR, "Modification type not set.");
     }
-    final String modificationType = getParam(req, MODIFY_EXECUTION_ACTION_TYPE);
+    final String modificationType = getParam(req, ConnectorParams.MODIFY_EXECUTION_ACTION_TYPE);
 
     try {
-      if (MODIFY_RETRY_FAILURES.equals(modificationType)) {
+      if (ConnectorParams.MODIFY_RETRY_FAILURES.equals(modificationType)) {
         this.flowRunnerManager.retryFailures(execId, user);
       }
     } catch (final ExecutorManagerException e) {
@@ -195,7 +261,7 @@ public class ExecutorServlet extends HttpServlet implements ConnectorParams {
         respMap.putAll(result.toObject());
       } catch (final Exception e) {
         logger.error(e.getMessage(), e);
-        respMap.put(RESPONSE_ERROR, e.getMessage());
+        respMap.put(ConnectorParams.RESPONSE_ERROR, e.getMessage());
       }
     } else {
       final int attempt = getIntParam(req, "attempt", 0);
@@ -254,10 +320,10 @@ public class ExecutorServlet extends HttpServlet implements ConnectorParams {
       final Map<String, Object> respMap) throws ServletException, IOException {
     final ArrayList<Object> updateTimesList =
         (ArrayList<Object>) JSONUtils.parseJSONFromString(getParam(req,
-            UPDATE_TIME_LIST_PARAM));
+            ConnectorParams.UPDATE_TIME_LIST_PARAM));
     final ArrayList<Object> execIDList =
         (ArrayList<Object>) JSONUtils.parseJSONFromString(getParam(req,
-            EXEC_ID_LIST_PARAM));
+            ConnectorParams.EXEC_ID_LIST_PARAM));
 
     final ArrayList<Object> updateList = new ArrayList<>();
     for (int i = 0; i < execIDList.size(); ++i) {
@@ -267,8 +333,8 @@ public class ExecutorServlet extends HttpServlet implements ConnectorParams {
       final ExecutableFlowBase flow = this.flowRunnerManager.getExecutableFlow(execId);
       if (flow == null) {
         final Map<String, Object> errorResponse = new HashMap<>();
-        errorResponse.put(RESPONSE_ERROR, "Flow does not exist");
-        errorResponse.put(UPDATE_MAP_EXEC_ID, execId);
+        errorResponse.put(ConnectorParams.RESPONSE_ERROR, "Flow does not exist");
+        errorResponse.put(ConnectorParams.UPDATE_MAP_EXEC_ID, execId);
         updateList.add(errorResponse);
         continue;
       }
@@ -278,7 +344,7 @@ public class ExecutorServlet extends HttpServlet implements ConnectorParams {
       }
     }
 
-    respMap.put(RESPONSE_UPDATED_FLOWS, updateList);
+    respMap.put(ConnectorParams.RESPONSE_UPDATED_FLOWS, updateList);
   }
 
   private void handleAjaxExecute(final HttpServletRequest req,
@@ -287,90 +353,90 @@ public class ExecutorServlet extends HttpServlet implements ConnectorParams {
       this.flowRunnerManager.submitFlow(execId);
     } catch (final ExecutorManagerException e) {
       logger.error(e.getMessage(), e);
-      respMap.put(RESPONSE_ERROR, e.getMessage());
+      respMap.put(ConnectorParams.RESPONSE_ERROR, e.getMessage());
     }
   }
 
   private void handleAjaxFlowStatus(final Map<String, Object> respMap, final int execid) {
     final ExecutableFlowBase flow = this.flowRunnerManager.getExecutableFlow(execid);
     if (flow == null) {
-      respMap.put(STATUS_PARAM, RESPONSE_NOTFOUND);
+      respMap.put(ConnectorParams.STATUS_PARAM, ConnectorParams.RESPONSE_NOTFOUND);
     } else {
-      respMap.put(STATUS_PARAM, flow.getStatus().toString());
-      respMap.put(RESPONSE_UPDATETIME, flow.getUpdateTime());
+      respMap.put(ConnectorParams.STATUS_PARAM, flow.getStatus().toString());
+      respMap.put(ConnectorParams.RESPONSE_UPDATETIME, flow.getUpdateTime());
     }
   }
 
   private void handleAjaxPause(final Map<String, Object> respMap, final int execid,
       final String user) {
     if (user == null) {
-      respMap.put(RESPONSE_ERROR, "user has not been set");
+      respMap.put(ConnectorParams.RESPONSE_ERROR, "user has not been set");
       return;
     }
 
     try {
       this.flowRunnerManager.pauseFlow(execid, user);
-      respMap.put(STATUS_PARAM, RESPONSE_SUCCESS);
+      respMap.put(ConnectorParams.STATUS_PARAM, ConnectorParams.RESPONSE_SUCCESS);
     } catch (final ExecutorManagerException e) {
       logger.error(e.getMessage(), e);
-      respMap.put(RESPONSE_ERROR, e.getMessage());
+      respMap.put(ConnectorParams.RESPONSE_ERROR, e.getMessage());
     }
   }
 
   private void handleAjaxResume(final Map<String, Object> respMap, final int execid,
       final String user) throws ServletException {
     if (user == null) {
-      respMap.put(RESPONSE_ERROR, "user has not been set");
+      respMap.put(ConnectorParams.RESPONSE_ERROR, "user has not been set");
       return;
     }
 
     try {
       this.flowRunnerManager.resumeFlow(execid, user);
-      respMap.put(STATUS_PARAM, RESPONSE_SUCCESS);
+      respMap.put(ConnectorParams.STATUS_PARAM, ConnectorParams.RESPONSE_SUCCESS);
     } catch (final ExecutorManagerException e) {
       logger.error(e.getMessage(), e);
-      respMap.put(RESPONSE_ERROR, e.getMessage());
+      respMap.put(ConnectorParams.RESPONSE_ERROR, e.getMessage());
     }
   }
 
   private void handleAjaxCancel(final Map<String, Object> respMap, final int execid,
       final String user) {
     if (user == null) {
-      respMap.put(RESPONSE_ERROR, "user has not been set");
+      respMap.put(ConnectorParams.RESPONSE_ERROR, "user has not been set");
       return;
     }
 
     try {
       this.flowRunnerManager.cancelFlow(execid, user);
-      respMap.put(STATUS_PARAM, RESPONSE_SUCCESS);
+      respMap.put(ConnectorParams.STATUS_PARAM, ConnectorParams.RESPONSE_SUCCESS);
     } catch (final ExecutorManagerException e) {
       logger.error(e.getMessage(), e);
-      respMap.put(RESPONSE_ERROR, e.getMessage());
+      respMap.put(ConnectorParams.RESPONSE_ERROR, e.getMessage());
     }
   }
 
   private void handleReloadJobTypePlugins(final Map<String, Object> respMap) {
     try {
       this.flowRunnerManager.reloadJobTypePlugins();
-      respMap.put(STATUS_PARAM, RESPONSE_SUCCESS);
+      respMap.put(ConnectorParams.STATUS_PARAM, ConnectorParams.RESPONSE_SUCCESS);
     } catch (final Exception e) {
       logger.error(e.getMessage(), e);
-      respMap.put(RESPONSE_ERROR, e.getMessage());
+      respMap.put(ConnectorParams.RESPONSE_ERROR, e.getMessage());
     }
   }
 
   private void setActive(final boolean value, final Map<String, Object> respMap) {
     try {
       setActiveInternal(value);
-      respMap.put(STATUS_PARAM, RESPONSE_SUCCESS);
+      respMap.put(ConnectorParams.STATUS_PARAM, ConnectorParams.RESPONSE_SUCCESS);
     } catch (final Exception e) {
       logger.error(e.getMessage(), e);
-      respMap.put(RESPONSE_ERROR, e.getMessage());
+      respMap.put(ConnectorParams.RESPONSE_ERROR, e.getMessage());
     }
   }
 
   private void setActiveInternal(final boolean value)
-      throws ExecutorManagerException {
+      throws ExecutorManagerException, InterruptedException {
     this.flowRunnerManager.setExecutorActive(value,
         this.application.getHost(), this.application.getPort());
   }
@@ -387,10 +453,10 @@ public class ExecutorServlet extends HttpServlet implements ConnectorParams {
       // Set the executor to inactive. Will receive no new flows.
       setActiveInternal(false);
       this.application.shutdown();
-      respMap.put(STATUS_PARAM, RESPONSE_SUCCESS);
+      respMap.put(ConnectorParams.STATUS_PARAM, ConnectorParams.RESPONSE_SUCCESS);
     } catch (final Exception e) {
       logger.error(e.getMessage(), e);
-      respMap.put(RESPONSE_ERROR, e.getMessage());
+      respMap.put(ConnectorParams.RESPONSE_ERROR, e.getMessage());
     }
   }
 
@@ -403,56 +469,12 @@ public class ExecutorServlet extends HttpServlet implements ConnectorParams {
 
       respMap.put("executor_id", Integer.toString(executor.getId()));
       respMap.put("isActive", String.valueOf(executor.isActive()));
-      respMap.put(STATUS_PARAM, RESPONSE_SUCCESS);
+      respMap.put(ConnectorParams.STATUS_PARAM, ConnectorParams.RESPONSE_SUCCESS);
     } catch (final Exception e) {
       logger.error(e.getMessage(), e);
-      respMap.put(RESPONSE_ERROR, e.getMessage());
+      respMap.put(ConnectorParams.RESPONSE_ERROR, e.getMessage());
     }
   }
 
-  /**
-   * Duplicated code with AbstractAzkabanServlet, but ne
-   */
-  public boolean hasParam(final HttpServletRequest request, final String param) {
-    return request.getParameter(param) != null;
-  }
 
-  public String getParam(final HttpServletRequest request, final String name)
-      throws ServletException {
-    final String p = request.getParameter(name);
-    if (p == null) {
-      throw new ServletException("Missing required parameter '" + name + "'.");
-    } else {
-      return p;
-    }
-  }
-
-  public String getParam(final HttpServletRequest request, final String name,
-      final String defaultVal) {
-    final String p = request.getParameter(name);
-    if (p == null) {
-      return defaultVal;
-    }
-
-    return p;
-  }
-
-  public int getIntParam(final HttpServletRequest request, final String name)
-      throws ServletException {
-    final String p = getParam(request, name);
-    return Integer.parseInt(p);
-  }
-
-  public int getIntParam(final HttpServletRequest request, final String name,
-      final int defaultVal) {
-    if (hasParam(request, name)) {
-      try {
-        return getIntParam(request, name);
-      } catch (final Exception e) {
-        return defaultVal;
-      }
-    }
-
-    return defaultVal;
-  }
 }

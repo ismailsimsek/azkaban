@@ -29,8 +29,7 @@ azkaban.FlowExecuteDialogView = Backbone.View.extend({
     $("#override-success-emails").click(function (evt) {
       if ($(this).is(':checked')) {
         $('#success-emails').attr('disabled', null);
-      }
-      else {
+      } else {
         $('#success-emails').attr('disabled', "disabled");
       }
     });
@@ -38,8 +37,7 @@ azkaban.FlowExecuteDialogView = Backbone.View.extend({
     $("#override-failure-emails").click(function (evt) {
       if ($(this).is(':checked')) {
         $('#failure-emails').attr('disabled', null);
-      }
-      else {
+      } else {
         $('#failure-emails').attr('disabled', "disabled");
       }
     });
@@ -96,8 +94,7 @@ azkaban.FlowExecuteDialogView = Backbone.View.extend({
     if (concurrentOption == "pipeline") {
       var pipelineLevel = $("#pipeline-level").val();
       executingData.pipelineLevel = pipelineLevel;
-    }
-    else if (concurrentOption == "queue") {
+    } else if (concurrentOption == "queue") {
       executingData.queueLevel = $("#queueLevel").val();
     }
 
@@ -116,19 +113,17 @@ azkaban.FlowExecuteDialogView = Backbone.View.extend({
     var pipelineExecutionId = this.model.get("pipelineExecution");
     var queueLevel = this.model.get("queueLevel");
     var nodeStatus = this.model.get("nodeStatus");
-    var overrideSuccessEmails = this.model.get("failureEmailsOverride");
-    var overrideFailureEmails = this.model.get("successEmailsOverride");
+    var overrideSuccessEmails = this.model.get("successEmailsOverride");
+    var overrideFailureEmails = this.model.get("failureEmailsOverride");
 
     if (overrideSuccessEmails) {
-      $('#override-success-emails').attr('checked', true);
-    }
-    else {
+      $('#override-success-emails').prop('checked', true);
+    } else {
       $('#success-emails').attr('disabled', 'disabled');
     }
     if (overrideFailureEmails) {
-      $('#override-failure-emails').attr('checked', true);
-    }
-    else {
+      $('#override-failure-emails').prop('checked', true);
+    } else {
       $('#failure-emails').attr('disabled', 'disabled');
     }
 
@@ -143,11 +138,11 @@ azkaban.FlowExecuteDialogView = Backbone.View.extend({
     }
 
     if (notifyFailure.first) {
-      $('#notify-failure-first').attr('checked', true);
+      $('#notify-failure-first').prop('checked', true);
       $('#notify-failure-first').parent('.btn').addClass('active');
     }
     if (notifyFailure.last) {
-      $('#notify-failure-last').attr('checked', true);
+      $('#notify-failure-last').prop('checked', true);
       $('#notify-failure-last').parent('.btn').addClass('active');
     }
 
@@ -188,8 +183,7 @@ azkaban.FlowExecuteDialogView = Backbone.View.extend({
     var loadCallback = function () {
       if (jobId) {
         self.showExecuteJob(projectName, flowId, jobId, data.withDep);
-      }
-      else {
+      } else {
         self.showExecuteFlow(projectName, flowId);
       }
     }
@@ -261,7 +255,6 @@ azkaban.FlowExecuteDialogView = Backbone.View.extend({
     };
     var self = this;
     var successHandler = function (data) {
-      console.log("data fetched");
       graphModel.addFlow(data);
 
       if (exgraph) {
@@ -485,8 +478,7 @@ var handleJobMenuClick = function (action, el, pos) {
       + flowName + "&job=" + jobid;
   if (action == "open") {
     window.location.href = requestURL;
-  }
-  else if (action == "openwindow") {
+  } else if (action == "openwindow") {
     window.open(requestURL);
   }
 }
@@ -503,11 +495,9 @@ var disableFinishedJobs = function (data) {
     if (node.status == "DISABLED" || node.status == "SKIPPED") {
       node.status = "READY";
       node.disabled = true;
-    }
-    else if (node.status == "SUCCEEDED" || node.noInitialStatus) {
+    } else if (node.status == "SUCCEEDED" || node.noInitialStatus) {
       node.disabled = true;
-    }
-    else {
+    } else {
       node.disabled = false;
     }
     if (node.type == "flow") {
@@ -589,8 +579,7 @@ var gatherDisabledNodes = function (data) {
     var node = nodes[i];
     if (node.disabled) {
       disabled.push(node.id);
-    }
-    else {
+    } else {
       if (node.type == "flow") {
         var array = gatherDisabledNodes(node);
         if (array && array.length > 0) {
@@ -624,9 +613,8 @@ function recurseAllDescendents(node, disable) {
 }
 
 var expanelNodeClickCallback = function (event, model, node) {
-  console.log("Node clicked callback");
   var jobId = node.id;
-  var flowId = executableGraphModel.get("flowId");
+  var flowId = node.parent.flow;
   var type = node.type;
 
   var menu;
@@ -652,8 +640,7 @@ var expanelNodeClickCallback = function (event, model, node) {
         }
       ];
 
-    }
-    else {
+    } else {
       menu = [
         {
           title: "Expand Flow...", callback: function () {
@@ -672,8 +659,7 @@ var expanelNodeClickCallback = function (event, model, node) {
         }
       ];
     }
-  }
-  else {
+  } else {
     var requestURL = contextURL + "/manager?project=" + projectName + "&flow="
         + flowId + "&job=" + jobId;
     menu = [
@@ -760,12 +746,11 @@ var expanelNodeClickCallback = function (event, model, node) {
 }
 
 var expanelEdgeClickCallback = function (event) {
-  console.log("Edge clicked callback");
 }
 
-var expanelGraphClickCallback = function (event) {
-  console.log("Graph clicked callback");
-  var flowId = executableGraphModel.get("flowId");
+var expanelGraphClickCallback = function (event, model) {
+  var data = model.get("data");
+  var flowId = data.flow;
   var requestURL = contextURL + "/manager?project=" + projectName + "&flow="
       + flowId;
 

@@ -19,7 +19,7 @@ package azkaban.executor;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.contains;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -43,6 +43,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -54,6 +55,7 @@ import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.mockito.Mockito;
+import org.mockito.stubbing.Answer;
 
 /**
  * Test class for executor manager
@@ -69,6 +71,8 @@ public class ExecutorManagerTest {
   private User user;
   private ExecutableFlow flow1;
   private ExecutableFlow flow2;
+  private ExecutionReference ref1;
+  private ExecutionReference ref2;
   private AlerterHolder alertHolder;
   private ExecutorApiGateway apiGateway;
   private Alerter mailAlerter;
@@ -404,6 +408,34 @@ public class ExecutorManagerTest {
     this.manager.submitExecutableFlow(flow4, this.user.getUserId());
   }
 
+  // Flows can be whitelisted to support a specified max number of concurrent flows.
+  @Test(expected = ExecutorManagerException.class)
+  public void testConcurrentRunWhitelist() throws Exception {
+    testSetUpForRunningFlows();
+    this.props.put(ConfigurationKeys.CONCURRENT_RUNS_ONEFLOW_WHITELIST, "basicyamlshelltest,"
+        + "bashSleep,4");
+    final ExecutableFlow flow1 = TestUtils
+        .createTestExecutableFlowFromYaml("basicyamlshelltest", "bashSleep");
+    flow1.setExecutionId(101);
+    final ExecutableFlow flow2 = TestUtils
+        .createTestExecutableFlowFromYaml("basicyamlshelltest", "bashSleep");
+    flow2.setExecutionId(102);
+    final ExecutableFlow flow3 = TestUtils
+        .createTestExecutableFlowFromYaml("basicyamlshelltest", "bashSleep");
+    flow3.setExecutionId(103);
+    final ExecutableFlow flow4 = TestUtils
+        .createTestExecutableFlowFromYaml("basicyamlshelltest", "bashSleep");
+    flow4.setExecutionId(104);
+    this.manager.submitExecutableFlow(flow1, this.user.getUserId());
+    verify(this.loader).uploadExecutableFlow(flow1);
+    this.manager.submitExecutableFlow(flow2, this.user.getUserId());
+    verify(this.loader).uploadExecutableFlow(flow2);
+    this.manager.submitExecutableFlow(flow3, this.user.getUserId());
+    verify(this.loader).uploadExecutableFlow(flow3);
+    this.manager.submitExecutableFlow(flow4, this.user.getUserId());
+    verify(this.loader).uploadExecutableFlow(flow4);
+  }
+
   @Ignore
   @Test
   public void testFetchAllActiveFlows() throws Exception {
@@ -486,6 +518,80 @@ public class ExecutorManagerTest {
     verify(this.loader, Mockito.times(2)).unassignExecutor(-1);
   }
 
+  @Test
+  public void testSetFlowLock() throws Exception {
+    testSetUpForRunningFlows();
+    final ExecutableFlow flow1 = TestUtils.createTestExecutableFlow("exectest1", "exec1");
+    flow1.setLocked(true);
+    final String msg = this.manager.submitExecutableFlow(flow1, this.user.getUserId());
+    assertThat(msg).isEqualTo("Flow derived-member-data for project flow is locked.");
+
+    // unlock the flow
+    flow1.setLocked(false);
+    this.manager.submitExecutableFlow(flow1, this.user.getUserId());
+    verify(this.loader).uploadExecutableFlow(flow1);
+    verify(this.loader).addActiveExecutableReference(any());
+  }
+
+  /**
+   * Test fetching application ids from log data.
+   *
+   * @throws Exception the exception
+   */
+  @Test
+  public void testGetApplicationIdsFromLog() throws Exception {
+    testSetUpForRunningFlows();
+    this.runningExecutions.get().put(1, new Pair<>(this.ref1, this.flow1));
+
+    // Verify that application ids are obtained successfully from the log data.
+    final String logData1 = "Submitted application_12345_6789.";
+    when(this.apiGateway.callWithReference(any(), eq(ConnectorParams.LOG_ACTION), any()))
+        .then(getLogChunksMock(logData1));
+    Set<String> appIds = this.manager.getApplicationIds(this.flow1, "job1", 0);
+    Assert.assertEquals(1, appIds.size());
+    Assert.assertEquals("12345_6789", appIds.iterator().next());
+
+    final String logData2 = " Submitted application_12345_6789.\n AttemptID: attempt_12345_6789. "
+        + "Accepted application_98765_4321.";
+    when(this.apiGateway.callWithReference(any(), eq(ConnectorParams.LOG_ACTION), any()))
+        .then(getLogChunksMock(logData2));
+    appIds = this.manager.getApplicationIds(this.flow1, "job1", 0);
+    Assert.assertEquals(2, appIds.size());
+    final Iterator iterator = appIds.iterator();
+    Assert.assertEquals("12345_6789", iterator.next());
+    Assert.assertEquals("98765_4321", iterator.next());
+
+
+    // Verify that an empty list is returned when log data length is 0 (no new data available).
+    when(this.apiGateway.callWithReference(any(), eq(ConnectorParams.LOG_ACTION), any()))
+        .then(getLogChunksMock(""));
+    Assert.assertEquals(0, this.manager.getApplicationIds(this.flow1, "job1", 0).size());
+  }
+
+  private Answer<Object> getLogChunksMock(final String logData) {
+    return invocationOnMock -> {
+      String offsetStr = null, lengthStr = null;
+      for (final Object arg : invocationOnMock.getArguments()) {
+        if (!(arg instanceof Pair)) {
+          continue;
+        }
+        final Pair pairArg = (Pair) arg;
+        if ("offset".equals(pairArg.getFirst())) {
+          offsetStr = (String) pairArg.getSecond();
+        } else if ("length".equals(pairArg.getFirst())) {
+          lengthStr = (String) pairArg.getSecond();
+        }
+      }
+      Assert.assertNotNull(offsetStr);
+      Assert.assertNotNull(lengthStr);
+      final int offset = Integer.parseInt(offsetStr);
+      final int length = Integer.parseInt(lengthStr);
+      final int actualLength = Math.min(length, Math.max(0, logData.length() - offset));
+      final String logChunk = logData.substring(offset, offset + actualLength);
+      return ImmutableMap.of("offset", offset, "length", actualLength, "data", logChunk);
+    };
+  }
+
   /*
    * TODO: will move below method to setUp() and run before every test for both runningFlows and queuedFlows
    */
@@ -514,18 +620,16 @@ public class ExecutorManagerTest {
     this.flow2 = TestUtils.createTestExecutableFlow("exectest1", "exec2");
     this.flow1.setExecutionId(1);
     this.flow2.setExecutionId(2);
-    final ExecutionReference ref1 =
-        new ExecutionReference(this.flow1.getExecutionId(), executor1);
-    final ExecutionReference ref2 =
-        new ExecutionReference(this.flow2.getExecutionId(), executor2);
-    this.activeFlows.put(this.flow1.getExecutionId(), new Pair<>(ref1, this.flow1));
-    this.activeFlows.put(this.flow2.getExecutionId(), new Pair<>(ref2, this.flow2));
+    this.ref1 = new ExecutionReference(this.flow1.getExecutionId(), executor1);
+    this.ref2 = new ExecutionReference(this.flow2.getExecutionId(), executor2);
+    this.activeFlows.put(this.flow1.getExecutionId(), new Pair<>(this.ref1, this.flow1));
+    this.activeFlows.put(this.flow2.getExecutionId(), new Pair<>(this.ref2, this.flow2));
     when(this.loader.fetchActiveFlows()).thenReturn(this.activeFlows);
   }
 
   private ExecutableFlow waitFlowFinished(final ExecutableFlow flow) throws Exception {
     azkaban.test.TestUtils.await().untilAsserted(() -> assertThat(getFlowStatus(flow))
-        .matches(Status::isStatusFinished, "isStatusFinished"));
+        .isNotNull().matches(Status::isStatusFinished, "isStatusFinished"));
     return fetchFlow(flow);
   }
 

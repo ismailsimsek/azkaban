@@ -16,6 +16,7 @@
 
 package azkaban.executor;
 
+import azkaban.DispatchMethod;
 import azkaban.project.Project;
 import azkaban.utils.FileIOUtils.LogData;
 import azkaban.utils.Pair;
@@ -36,7 +37,13 @@ public interface ExecutorManagerAdapter {
 
   public List<Integer> getRunningFlows(int projectId, String flowId);
 
-  public List<ExecutableFlow> getRunningFlows() throws IOException;
+  public List<ExecutableFlow> getRunningFlows();
+
+  public long getQueuedFlowSize();
+
+  public long getAgedQueuedFlowSize();
+
+  public DispatchMethod getDispatchMethod();
 
   /**
    * <pre>
@@ -81,7 +88,8 @@ public interface ExecutorManagerAdapter {
   public List<Object> getExecutionJobStats(ExecutableFlow exflow, String jobId,
       int attempt) throws ExecutorManagerException;
 
-  public String getJobLinkUrl(ExecutableFlow exFlow, String jobId, int attempt);
+  public Map<String, String> getExternalJobLogUrls(ExecutableFlow exFlow, String jobId,
+      int attempt);
 
   public void cancelFlow(ExecutableFlow exFlow, String userId)
       throws ExecutorManagerException;
@@ -98,6 +106,10 @@ public interface ExecutorManagerAdapter {
   public String submitExecutableFlow(ExecutableFlow exflow, String userId)
       throws ExecutorManagerException;
 
+  public Map<String, String> doRampActions(List<Map<String, Object>> rampAction)
+      throws ExecutorManagerException;
+
+  Status getStartStatus();
   /**
    * Manage servlet call for stats servlet in Azkaban execution server Action can take any of the
    * following values <ul> <li>{@link azkaban.executor.ConnectorParams#STATS_SET_REPORTINGINTERVAL}<li>
@@ -113,6 +125,8 @@ public interface ExecutorManagerAdapter {
 
   public Map<String, Object> callExecutorJMX(String hostPort, String action,
       String mBean) throws IOException;
+
+  public void start() throws ExecutorManagerException;
 
   public void shutdown();
 

@@ -13,8 +13,8 @@
  * License for the specific language governing permissions and limitations under
  * the License.
  */
-
 package azkaban.executor;
+
 
 public interface ConnectorParams {
 
@@ -44,6 +44,11 @@ public interface ConnectorParams {
   public static final String MODIFY_EXECUTION_ACTION_TYPE = "modifyType";
   public static final String MODIFY_RETRY_FAILURES = "retryFailures";
   public static final String MODIFY_JOBS_LIST = "jobIds";
+
+  public static final String MODIFY_PROPERTY_ACTION = "modifyProperty";
+  public static final String PROPERTY_NAME_PARAM = "propertyName";
+  public static final String POLLING_INTERVAL_MILLIS_PROPERTY_NAME = "pollingIntervalMillis";
+  public static final String PROPERTY_VALUE_PARAM = "propertyValue";
 
   public static final String START_PARAM = "start";
   public static final String END_PARAM = "end";
@@ -106,6 +111,4 @@ public interface ConnectorParams {
   public static final String STATS_MAP_REPORTINGINTERVAL = "interval";
   public static final String STATS_MAP_CLEANINGINTERVAL = "interval";
   public static final String STATS_MAP_EMITTERNUMINSTANCES = "numInstances";
-
-
 }

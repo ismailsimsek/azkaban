@@ -19,11 +19,15 @@ apply plugin: 'distribution'
 dependencies {
     compile(project(':az-core'))
     compile(project(':azkaban-common'))
+    compile(project(':azkaban-hadoop-security-plugin'))
+    compile(project(':az-hadoop-jobtype-plugin')) {
+        transitive = false
+    }
 
+    compile deps.hadoopCommon
     compile deps.guava
     compile deps.jsr305
     compile deps.kafkaLog4jAppender
-    runtime(project(':azkaban-hadoop-security-plugin'))
 
     testCompile(project(path: ':azkaban-common', configuration: 'testCompile'))
     testCompile(project(':azkaban-common').sourceSets.test.output)
@@ -31,7 +35,6 @@ dependencies {
     testCompile deps.h2
     testCompile deps.hadoopAnnotations
     testCompile deps.hadoopAuth
-    testCompile deps.hadoopCommon
     testCompile deps.hadoopHdfs
 }
 

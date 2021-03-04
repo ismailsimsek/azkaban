@@ -16,6 +16,7 @@
 package azkaban.restli;
 
 import azkaban.Constants.ConfigurationKeys;
+import azkaban.executor.ExecutorManagerException;
 import azkaban.flowtrigger.quartz.FlowTriggerScheduler;
 import azkaban.project.Project;
 import azkaban.project.ProjectManager;
@@ -24,7 +25,6 @@ import azkaban.project.validator.ValidationReport;
 import azkaban.user.Permission;
 import azkaban.user.User;
 import azkaban.user.UserManagerException;
-import azkaban.utils.Props;
 import azkaban.utils.Utils;
 import azkaban.webapp.AzkabanWebServer;
 import com.linkedin.restli.common.HttpStatus;
@@ -58,7 +58,7 @@ public class ProjectManagerResource extends ResourceContextHolder {
       @ActionParam("projectName") final String projectName,
       @ActionParam("packageUrl") final String packageUrl)
       throws ProjectManagerException, RestLiServiceException, UserManagerException,
-      ServletException, IOException, SchedulerException {
+      ServletException, IOException, SchedulerException, ExecutorManagerException {
     logger.info("Deploy called. {projectName: " + projectName + ", packageUrl:" + packageUrl + "}");
 
     final String ip = ResourceUtils.getRealClientIpAddr(this.getContext());
@@ -66,7 +66,7 @@ public class ProjectManagerResource extends ResourceContextHolder {
     final ProjectManager projectManager = getAzkaban().getProjectManager();
     final Project project = projectManager.getProject(projectName);
 
-    final FlowTriggerScheduler scheduler = getAzkaban().getScheduler();
+    final FlowTriggerScheduler scheduler = getAzkaban().getFlowTriggerScheduler();
     final boolean enableQuartz = getAzkaban().getServerProps().getBoolean(ConfigurationKeys
         .ENABLE_QUARTZ, false);
 
@@ -128,23 +128,22 @@ public class ProjectManagerResource extends ResourceContextHolder {
       if (enableQuartz) {
         //todo chengren311: should maintain atomicity,
         // e.g, if uploadProject fails, associated schedule shouldn't be added.
-        scheduler.unscheduleAll(project);
+        scheduler.unschedule(project);
       }
       // Check if project upload runs into any errors, such as the file
       // having blacklisted jars
-      final Props props = new Props();
       final Map<String, ValidationReport> reports = projectManager
-          .uploadProject(project, archiveFile, "zip", user, props);
+          .uploadProject(project, archiveFile, "zip", user, null, null);
 
       if (enableQuartz) {
-        scheduler.scheduleAll(project, user.getUserId());
+        scheduler.schedule(project, user.getUserId());
       }
 
       checkReports(reports);
       logger.info("Deploy: project " + projectName + " version is " + project.getVersion()
           + ", reference is " + System.identityHashCode(project));
       return Integer.toString(project.getVersion());
-    } catch (final ProjectManagerException | SchedulerException e) {
+    } catch (final ProjectManagerException | ExecutorManagerException e) {
       final String errorMsg = "Upload of project " + project + " from " + archiveFile + " failed";
       logger.error(errorMsg, e);
       throw e;

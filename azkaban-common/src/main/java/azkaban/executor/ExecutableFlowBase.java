@@ -37,6 +37,7 @@ public class ExecutableFlowBase extends ExecutableNode {
   public static final String PROPERTIES_PARAM = "properties";
   public static final String SOURCE_PARAM = "source";
   public static final String INHERITED_PARAM = "inherited";
+  private static final String FLOW_ID_FORMAT_PATTERN = "%s.%s";
   private static final Logger logger = LoggerFactory.getLogger(ExecutableFlowBase.class);
 
   private final HashMap<String, ExecutableNode> executableNodes =
@@ -89,6 +90,14 @@ public class ExecutableFlowBase extends ExecutableNode {
     return -1;
   }
 
+  public String getExecutionSource() {
+    if (this.getParentFlow() != null) {
+      return this.getParentFlow().getExecutionSource();
+    }
+
+    return null;
+  }
+
   public String getLastModifiedByUser() {
     if (this.getParentFlow() != null) {
       return this.getParentFlow().getLastModifiedByUser();
@@ -111,6 +120,14 @@ public class ExecutableFlowBase extends ExecutableNode {
 
   public String getFlowId() {
     return this.flowId;
+  }
+
+  public String getFlowName() {
+    return String.format(FLOW_ID_FORMAT_PATTERN, this.getProjectName(), this.getFlowId());
+  }
+
+  public int getRampPercentageId() {
+    return Math.abs(getFlowName().hashCode() % 100);
   }
 
   protected void setFlow(final Project project, final Flow flow) {
@@ -372,8 +389,7 @@ public class ExecutableFlowBase extends ExecutableNode {
     if (this.getParentFlow() == null) {
       return this.getFlowId();
     } else {
-      return this.getParentFlow().getFlowPath() + "," + this.getId() + ":"
-          + this.getFlowId();
+      return this.getId() + ":" + this.getFlowId();
     }
   }
 }

@@ -74,17 +74,17 @@ public class Emailer extends AbstractMailer implements Alerter {
     this.clientHostname = props.getString(ConfigurationKeys.AZKABAN_WEBSERVER_EXTERNAL_HOSTNAME,
         props.getString("jetty.hostname", "localhost"));
 
-    if (props.getBoolean("jetty.use.ssl", true)) {
+    if (props.getBoolean(ConfigurationKeys.JETTY_USE_SSL, true)) {
       this.scheme = HTTPS;
       this.clientPortNumber = Integer.toString(props
           .getInt(ConfigurationKeys.AZKABAN_WEBSERVER_EXTERNAL_SSL_PORT,
-              props.getInt("jetty.ssl.port",
+              props.getInt(ConfigurationKeys.JETTY_SSL_PORT,
                   Constants.DEFAULT_SSL_PORT_NUMBER)));
     } else {
       this.scheme = HTTP;
       this.clientPortNumber = Integer.toString(
-          props.getInt(ConfigurationKeys.AZKABAN_WEBSERVER_EXTERNAL_PORT, props.getInt("jetty.port",
-              Constants.DEFAULT_PORT_NUMBER)));
+          props.getInt(ConfigurationKeys.AZKABAN_WEBSERVER_EXTERNAL_PORT,
+              props.getInt(ConfigurationKeys.JETTY_PORT, Constants.DEFAULT_PORT_NUMBER)));
     }
   }
 
@@ -108,7 +108,7 @@ public class Emailer extends AbstractMailer implements Alerter {
     final String subject =
         "SLA violation for " + getJobOrFlowName(slaOption) + " on " + getAzkabanName();
     final List<String> emailList =
-        (List<String>) slaOption.getInfo().get(SlaOption.INFO_EMAIL_LIST);
+        (List<String>) slaOption.getEmails();
     logger.info("Sending SLA email " + slaMessage);
     sendEmail(emailList, subject, slaMessage);
   }
@@ -155,9 +155,9 @@ public class Emailer extends AbstractMailer implements Alerter {
 
   /**
    * Sends as many emails as there are unique combinations of:
-   *
+   * <p>
    * [mail creator] x [failure email address list]
-   *
+   * <p>
    * Executions with the same combo are grouped into a single message.
    */
   @Override
@@ -186,6 +186,30 @@ public class Emailer extends AbstractMailer implements Alerter {
         sendFailedUpdateEmail(executor, updateException, mailCreator, emailsToFlows.get(emailList));
       }
     }
+  }
+
+  /**
+   * Use the default mail creator to send a failed executor healthcheck message to the given list of
+   * addresses. Message includes a list of flows impacted on the executor.
+   */
+  @Override
+  public void alertOnFailedExecutorHealthCheck(final Executor executor,
+      final List<ExecutableFlow> flows, final ExecutorManagerException failureException,
+      final List<String> emailList) {
+    if (emailList == null || emailList.isEmpty()) {
+      // We should consider throwing an exception here. For now this follows the model of the rest
+      // of the file and simply returns.
+      logger.error("No email list specified for failed health check alert");
+      return;
+    }
+    final MailCreator mailCreator =
+        DefaultMailCreator.getCreator(DefaultMailCreator.DEFAULT_MAIL_CREATOR);
+    final EmailMessage message = this.messageCreator.createMessage();
+    final boolean mailCreated = mailCreator
+        .createFailedExecutorHealthCheckMessage(flows, executor, failureException, message,
+            this.azkabanName, this.scheme, this.clientHostname, this.clientPortNumber, emailList);
+    final List<Integer> executionIds = Lists.transform(flows, ExecutableFlow::getExecutionId);
+    sendEmail(message, mailCreated, "failed health check message for executions " + executionIds);
   }
 
   /**
@@ -230,12 +254,10 @@ public class Emailer extends AbstractMailer implements Alerter {
   }
 
   private String getJobOrFlowName(final SlaOption slaOption) {
-    final String flowName = (String) slaOption.getInfo().get(SlaOption.INFO_FLOW_NAME);
-    final String jobName = (String) slaOption.getInfo().get(SlaOption.INFO_JOB_NAME);
-    if (org.apache.commons.lang.StringUtils.isNotBlank(jobName)) {
-      return flowName + ":" + jobName;
+    if (org.apache.commons.lang.StringUtils.isNotBlank(slaOption.getJobName())) {
+      return slaOption.getFlowName() + ":" + slaOption.getJobName();
     } else {
-      return flowName;
+      return slaOption.getFlowName();
     }
   }
 }

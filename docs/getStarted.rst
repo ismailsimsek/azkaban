@@ -70,7 +70,7 @@ Follow these steps to get started:
 3. Start the solo server:
 ::
   cd azkaban-solo-server/build/install/azkaban-solo-server; bin/start-solo.sh
-Azkaban solo server should be all set, by listening to ``8081`` port at default to accept incoming network request. So, open a web browser and check out ``http://localhost:8081/``
+Azkaban solo server should be all set, by listening to ``8081`` port at default to accept incoming network request. So, open a web browser and check out ``http://localhost:8081/`` . The default login username and password for the solo server are both ``azkaban`` which is configured in ``conf/azkaban-users.xml`` in the ``resources`` folder of the solo server.
 
 4. Stop server:
 ::
@@ -109,7 +109,7 @@ Inside the ``conf`` directory, there should be three files:
 - ``global.properties`` - Global static properties that are passed as shared properties to every workflow and job.
 - ``azkaban-users.xml`` - Used to add users and roles for authentication. This file is not used if the XmLUserManager is not set up to use it.
 
-The ``The azkaban.properties`` file is the main configuration file.
+The ``azkaban.properties`` file is the main configuration file.
 
 
 Configuring HTTPS server (*Optional*)
@@ -460,68 +460,68 @@ Following properties are visible to the users. These are the same
 properties which are merged to form ``jobProps`` in
 ``AbstractProcessJob.java``
 
-+-----------------------+-----------------------+-----------------------+
-| PropertySource        | Description           | Priority              |
-+=======================+=======================+=======================+
-| ``global.properties`` | These are admin       | Lowest (0)            |
-| in ``conf`` directory | configured properties |                       |
-|                       | during Azkaban setup. |                       |
-|                       | Global to all         |                       |
-|                       | jobtypes.             |                       |
-+-----------------------+-----------------------+-----------------------+
-| ``common.properties`` | These are admin       | 1                     |
-| in ``jobtype``        | configured properties |                       |
-| directory             | during Azkaban setup. |                       |
-|                       | Global to all         |                       |
-|                       | jobtypes.             |                       |
-+-----------------------+-----------------------+-----------------------+
-|``plugin.properties``  | These are admin       | 2                     |
-| in                    | configured properties |                       |
-| ``jobtype/<jobtype-na | during Azkaban setup. |                       |
-| me>``                 | Restricted to a       |                       |
-| directory             | specific jobtype.     |                       |
-+-----------------------+-----------------------+-----------------------+
-| ``common.properties`` | These are user        | 3                     |
-| in project zip        | specified property    |                       |
-|                       | which apply to all    |                       |
-|                       | jobs in sibling or    |                       |
-|                       | descendent            |                       |
-|                       | directories           |                       |
-+-----------------------+-----------------------+-----------------------+
-| Flow properties       | These are user        | 4                     |
-| specified while       | specified property.   |                       |
-| triggering flow       | These can be          |                       |
-| execution             | specified from UI or  |                       |
-|                       | Ajax call but cannot  |                       |
-|                       | be saved in project   |                       |
-|                       | zip.                  |                       |
-+-----------------------+-----------------------+-----------------------+
-| ``{job-name}.job``    | These are user        | Highest (5)           |
-| job specification     | specified property in |                       |
-|                       | actual job file       |                       |
-+-----------------------+-----------------------+-----------------------+
++----------------------------+-----------------------+-----------------------+
+| PropertySource             | Description           | Priority              |
++============================+=======================+=======================+
+| ``global.properties``      | These are admin       | Lowest (0)            |
+| in ``conf`` directory      | configured properties |                       |
+|                            | during Azkaban setup. |                       |
+|                            | Global to all         |                       |
+|                            | jobtypes.             |                       |
++----------------------------+-----------------------+-----------------------+
+| ``common.properties``      | These are admin       | 1                     |
+| in ``jobtype``             | configured properties |                       |
+| directory                  | during Azkaban setup. |                       |
+|                            | Global to all         |                       |
+|                            | jobtypes.             |                       |
++----------------------------+-----------------------+-----------------------+
+|``plugin.properties``       | These are admin       | 2                     |
+| in                         | configured properties |                       |
+| ``jobtype/<jobtype-name>`` | during Azkaban setup. |                       |
+|                            | Restricted to a       |                       |
+| directory                  | specific jobtype.     |                       |
++----------------------------+-----------------------+-----------------------+
+| ``common.properties``      | These are user        | 3                     |
+| in project zip             | specified property    |                       |
+|                            | which apply to all    |                       |
+|                            | jobs in sibling or    |                       |
+|                            | descendent            |                       |
+|                            | directories           |                       |
++----------------------------+-----------------------+-----------------------+
+| Flow properties            | These are user        | 4                     |
+| specified while            | specified property.   |                       |
+| triggering flow            | These can be          |                       |
+| execution                  | specified from UI or  |                       |
+|                            | Ajax call but cannot  |                       |
+|                            | be saved in project   |                       |
+|                            | zip.                  |                       |
++----------------------------+-----------------------+-----------------------+
+| ``{job-name}.job``         | These are user        | Highest (5)           |
+| job specification          | specified property in |                       |
+|                            | actual job file       |                       |
++----------------------------+-----------------------+-----------------------+
 
 Following properties are not visible to the users. Depending on jobtype
 implementation these properties are used for constraining user jobs and
 properties. These are the same properties which are merged to form
 ``sysProps`` in ``AbstractProcessJob.java``
 
-+-----------------------+-----------------------+-----------------------+
-| PropertySource        | Description           | Priority              |
-+=======================+=======================+=======================+
-| commonprivate.prope   | These are admin       | Lowest (0)            |
-|rties                  | configured properties |                       |
-| in jobtype            | during Azkaban setup. |                       |
-| directory             | Global to all         |                       |
-|                       | jobtypes.             |                       |
-+-----------------------+-----------------------+-----------------------+
-| private.properties    | These are admin       | Highest (1)           |
-|                       | configured properties |                       |
-| in                    | during Azkaban setup. |                       |
-|  jobtype/{jobtype-na  | Restricted to a       |                       |
-|me}                    | specific jobtype.     |                       |
-| directory             |                       |                       |
-+-----------------------+-----------------------+-----------------------+
++------------------------------+-----------------------+-----------------------+
+| PropertySource               | Description           | Priority              |
++==============================+=======================+=======================+
+| ``commonprivate.properties`` | These are admin       | Lowest (0)            |
+|                              | configured properties |                       |
+| in jobtype                   | during Azkaban setup. |                       |
+| directory                    | Global to all         |                       |
+|                              | jobtypes.             |                       |
++------------------------------+-----------------------+-----------------------+
+| ``private.properties``       | These are admin       | Highest (1)           |
+|                              | configured properties |                       |
+| in                           | during Azkaban setup. |                       |
+|  jobtype/{jobtype-name}      | Restricted to a       |                       |
+|                              | specific jobtype.     |                       |
+| directory                    |                       |                       |
++------------------------------+-----------------------+-----------------------+
 
 ``azkaban.properties`` is another type of properties which are only used
 for controlling Azkaban webserver and execserver configuration. Please

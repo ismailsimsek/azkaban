@@ -18,15 +18,16 @@ package azkaban.flowtrigger;
 
 import azkaban.Constants;
 import azkaban.executor.ExecutableFlow;
-import azkaban.executor.ExecutorManager;
+import azkaban.executor.ExecutorManagerAdapter;
 import azkaban.flow.Flow;
 import azkaban.flow.FlowUtils;
 import azkaban.flowtrigger.database.FlowTriggerInstanceLoader;
 import azkaban.project.Project;
 import azkaban.utils.EmailMessage;
 import azkaban.utils.Emailer;
-import azkaban.utils.Utils;
+import azkaban.utils.TimeUtils;
 import com.google.common.base.Preconditions;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
@@ -45,13 +46,13 @@ public class TriggerInstanceProcessor {
   private static final String FAILURE_EMAIL_SUBJECT = "flow trigger for flow '%s', project '%s' "
       + "has been cancelled on %s";
   private final static int THREAD_POOL_SIZE = 32;
-  private final ExecutorManager executorManager;
+  private final ExecutorManagerAdapter executorManager;
   private final FlowTriggerInstanceLoader flowTriggerInstanceLoader;
   private final Emailer emailer;
   private final ExecutorService executorService;
 
   @Inject
-  public TriggerInstanceProcessor(final ExecutorManager executorManager,
+  public TriggerInstanceProcessor(final ExecutorManagerAdapter executorManager,
       final FlowTriggerInstanceLoader flowTriggerInstanceLoader,
       final Emailer emailer) {
     Preconditions.checkNotNull(executorManager);
@@ -60,7 +61,8 @@ public class TriggerInstanceProcessor {
     this.emailer = emailer;
     this.executorManager = executorManager;
     this.flowTriggerInstanceLoader = flowTriggerInstanceLoader;
-    this.executorService = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
+    this.executorService = Executors.newFixedThreadPool(THREAD_POOL_SIZE,
+        new ThreadFactoryBuilder().setNameFormat("azk-trigger-instance-pool-%d").build());
   }
 
   private void executeFlowAndUpdateExecID(final TriggerInstance triggerInst) {
@@ -70,6 +72,7 @@ public class TriggerInstanceProcessor {
       final ExecutableFlow executableFlow = FlowUtils.createExecutableFlow(project, flow);
       // execute the flow with default execution option(concurrency option being "ignore
       // currently running")
+      executableFlow.setExecutionSource(Constants.EXECUTION_SOURCE_EVENT);
       this.executorManager.submitExecutableFlow(executableFlow, triggerInst.getSubmitUser());
       triggerInst.setFlowExecId(executableFlow.getExecutionId());
     } catch (final Exception ex) {
@@ -104,7 +107,7 @@ public class TriggerInstanceProcessor {
     message.println("<tr><td>End Time</td><td>");
     message.println("<tr><td>" + sdf.format(new Date(triggerInst.getEndTime())) + "</td><td>");
     message.println("<tr><td>Duration</td><td>"
-        + Utils.formatDuration(triggerInst.getStartTime(), triggerInst.getEndTime())
+        + TimeUtils.formatDuration(triggerInst.getStartTime(), triggerInst.getEndTime())
         + "</td></tr>");
     message.println("<tr><td>Status</td><td>" + triggerInst.getStatus() + "</td></tr>");
     message.println("</table>");

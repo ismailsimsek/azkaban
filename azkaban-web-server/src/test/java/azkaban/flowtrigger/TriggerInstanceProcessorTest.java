@@ -16,7 +16,9 @@
 package azkaban.flowtrigger;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -24,7 +26,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import azkaban.executor.ExecutorLoader;
-import azkaban.executor.ExecutorManager;
+import azkaban.executor.ExecutorManagerAdapter;
 import azkaban.executor.MockExecutorLoader;
 import azkaban.flow.Flow;
 import azkaban.flowtrigger.database.FlowTriggerInstanceLoader;
@@ -60,7 +62,7 @@ public class TriggerInstanceProcessorTest {
 
   private static final String EMAIL = "test@email.com";
   private FlowTriggerInstanceLoader triggerInstLoader;
-  private ExecutorManager executorManager;
+  private ExecutorManagerAdapter executorManager;
   private Emailer emailer;
   private EmailMessage message;
   private EmailMessageCreator messageCreator;
@@ -105,7 +107,7 @@ public class TriggerInstanceProcessorTest {
     this.message = EmailerTest.mockEmailMessage();
     this.messageCreator = EmailerTest.mockMessageCreator(this.message);
     this.triggerInstLoader = mock(FlowTriggerInstanceLoader.class);
-    this.executorManager = mock(ExecutorManager.class);
+    this.executorManager = mock(ExecutorManagerAdapter.class);
     this.executorLoader = new MockExecutorLoader();
     when(this.executorManager.submitExecutableFlow(any(), anyString())).thenReturn("return");
     final CommonMetrics commonMetrics = new CommonMetrics(new MetricsManager(new MetricRegistry()));
@@ -116,7 +118,7 @@ public class TriggerInstanceProcessorTest {
     doAnswer(invocation -> {
       this.sendEmailLatch.countDown();
       return null;
-    }).when(this.emailer).sendEmail(any(), any(), any());
+    }).when(this.emailer).sendEmail(any(EmailMessage.class), anyBoolean(), anyString());
 
     this.submitFlowLatch = new CountDownLatch(1);
     doAnswer(invocation -> {
@@ -149,6 +151,7 @@ public class TriggerInstanceProcessorTest {
     final TriggerInstance triggerInstance = createTriggerInstance();
     this.processor.processTermination(triggerInstance);
     this.sendEmailLatch.await(10L, TimeUnit.SECONDS);
+    assertEquals(0, this.sendEmailLatch.getCount());
     verify(this.message).setSubject(
         "flow trigger for flow 'flowId', project 'proj' has been cancelled on azkaban");
     assertThat(TestUtils.readResource("/emailTemplate/flowtriggerfailureemail.html", this))

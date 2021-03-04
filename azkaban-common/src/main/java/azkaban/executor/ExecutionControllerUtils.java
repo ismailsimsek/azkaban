@@ -16,9 +16,23 @@
 
 package azkaban.executor;
 
+import static java.util.Objects.requireNonNull;
+
+import azkaban.Constants.ConfigurationKeys;
 import azkaban.alert.Alerter;
+import azkaban.utils.AuthenticationUtils;
+import azkaban.utils.Props;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.annotation.Nullable;
 import org.apache.commons.lang.exception.ExceptionUtils;
 import org.slf4j.Logger;
@@ -31,6 +45,18 @@ public class ExecutionControllerUtils {
 
   private static final Logger logger = LoggerFactory.getLogger(
       ExecutionControllerUtils.class);
+  private static final String SPARK_JOB_TYPE = "spark";
+  static final String OLD_APPLICATION_ID = "${application.id}";
+  // URLs coming from routing cluster info cannot use `${}` as a placeholder because it is already
+  // used for property substitution in Props class, which URLs are propagated through.
+  static final String NEW_APPLICATION_ID = "<application.id>";
+  // The regex to look for while fetching application ID from the Hadoop/Spark job log
+  private static final Pattern APPLICATION_ID_PATTERN = Pattern.compile("application_(\\d+_\\d+)");
+  // The regex to look for while validating the content from RM job link
+  private static final Pattern FAILED_TO_READ_APPLICATION_PATTERN = Pattern
+      .compile("Failed to read the application");
+  private static final Pattern INVALID_APPLICATION_ID_PATTERN = Pattern
+      .compile("Invalid Application ID");
 
   /**
    * If the current status of the execution is not one of the finished statuses, mark the execution
@@ -74,7 +100,7 @@ public class ExecutionControllerUtils {
     }
 
     if (alertUser) {
-      alertUser(flow, alerterHolder, getFinalizeFlowReasons(reason, originalError));
+      alertUserOnFlowFinished(flow, alerterHolder, getFinalizeFlowReasons(reason, originalError));
     }
   }
 
@@ -85,8 +111,8 @@ public class ExecutionControllerUtils {
    * @param alerterHolder the alerter holder
    * @param extraReasons the extra reasons for alerting
    */
-  public static void alertUser(final ExecutableFlow flow, final AlerterHolder alerterHolder,
-      final String[] extraReasons) {
+  public static void alertUserOnFlowFinished(final ExecutableFlow flow, final AlerterHolder
+      alerterHolder, final String[] extraReasons) {
     final ExecutionOptions options = flow.getExecutionOptions();
     final Alerter mailAlerter = alerterHolder.get("email");
     if (flow.getStatus() != Status.SUCCEEDED) {
@@ -128,6 +154,40 @@ public class ExecutionControllerUtils {
           } catch (final Exception e) {
             logger.error("Failed to alert on success by " + alertType + " for execution " + flow
                 .getExecutionId(), e);
+          }
+        } else {
+          logger.error("Alerter type " + alertType + " doesn't exist. Failed to alert.");
+        }
+      }
+    }
+  }
+
+  /**
+   * Alert the user when the flow has encountered the first error.
+   *
+   * @param flow the execution
+   * @param alerterHolder the alerter holder
+   */
+  public static void alertUserOnFirstError(final ExecutableFlow flow,
+      final AlerterHolder alerterHolder) {
+    final ExecutionOptions options = flow.getExecutionOptions();
+    if (options.getNotifyOnFirstFailure()) {
+      logger.info("Alert on first error of execution " + flow.getExecutionId());
+      final Alerter mailAlerter = alerterHolder.get("email");
+      try {
+        mailAlerter.alertOnFirstError(flow);
+      } catch (final Exception e) {
+        logger.error("Failed to send first error email." + e.getMessage(), e);
+      }
+
+      if (options.getFlowParameters().containsKey("alert.type")) {
+        final String alertType = options.getFlowParameters().get("alert.type");
+        final Alerter alerter = alerterHolder.get(alertType);
+        if (alerter != null) {
+          try {
+            alerter.alertOnFirstError(flow);
+          } catch (final Exception e) {
+            logger.error("Failed to alert by " + alertType, e);
           }
         } else {
           logger.error("Alerter type " + alertType + " doesn't exist. Failed to alert.");
@@ -207,5 +267,131 @@ public class ExecutionControllerUtils {
       default:
         return false;
     }
+  }
+
+  /**
+   * Dynamically create the job link url. Construct the job link url from resource manager url.
+   * If it's valid, just return the job link url. Otherwise, construct the job link url from
+   * Hadoop/Spark job history server.
+   *
+   * @param exFlow The executable flow.
+   * @param jobId The job id.
+   * @param applicationId The application id.
+   * @param azkProps The azkaban props.
+   * @return the job link url.
+   */
+  public static String createJobLinkUrl(final ExecutableFlow exFlow, final String jobId,
+      final String applicationId, final Props azkProps) {
+    if (applicationId == null) {
+      return null;
+    }
+
+    final ExecutableNode node = exFlow.getExecutableNodePath(jobId);
+    final boolean executableNodeFound = (node != null) ? true : false;
+
+    String resourceManagerJobUrl = null;
+    String sparkHistoryServerUrl = null;
+    String jobHistoryServerUrl = null;
+    final String applicationPlaceholder;
+
+    if (executableNodeFound && node.getClusterInfo() != null) {
+      // use the information of the cluster where the job is previously routed to
+      final ClusterInfo cluster = node.getClusterInfo();
+      applicationPlaceholder = NEW_APPLICATION_ID;
+      resourceManagerJobUrl = cluster.resourceManagerURL;
+      sparkHistoryServerUrl = cluster.sparkHistoryServerURL;
+      jobHistoryServerUrl = cluster.historyServerURL;
+    } else {
+      // fall back to web server's own configuration if cluster is missing for this job
+      applicationPlaceholder = OLD_APPLICATION_ID;
+      if (azkProps.containsKey(ConfigurationKeys.RESOURCE_MANAGER_JOB_URL)) {
+        resourceManagerJobUrl = azkProps.getString(ConfigurationKeys.RESOURCE_MANAGER_JOB_URL);
+      }
+      if (azkProps.containsKey(ConfigurationKeys.SPARK_HISTORY_SERVER_JOB_URL)) {
+        sparkHistoryServerUrl = azkProps.getString(ConfigurationKeys.SPARK_HISTORY_SERVER_JOB_URL);
+      }
+      if (azkProps.containsKey(ConfigurationKeys.HISTORY_SERVER_JOB_URL)) {
+        jobHistoryServerUrl = azkProps.getString(ConfigurationKeys.HISTORY_SERVER_JOB_URL);
+      }
+    }
+
+    if (resourceManagerJobUrl == null || sparkHistoryServerUrl == null || jobHistoryServerUrl == null) {
+      logger.info("Missing Resource Manager, Spark History Server or History Server URL");
+      return null;
+    }
+
+    final URL url;
+    final String jobLinkUrl;
+    boolean isRMJobLinkValid = true;
+
+    try {
+      url = new URL(resourceManagerJobUrl.replace(applicationPlaceholder, applicationId));
+      final String keytabPrincipal = requireNonNull(
+          azkProps.getString(ConfigurationKeys.AZKABAN_KERBEROS_PRINCIPAL));
+      final String keytabPath = requireNonNull(azkProps.getString(ConfigurationKeys
+          .AZKABAN_KEYTAB_PATH));
+      final HttpURLConnection connection = AuthenticationUtils.loginAuthenticatedURL(url,
+          keytabPrincipal, keytabPath);
+
+      try (final BufferedReader in = new BufferedReader(
+          new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
+        String inputLine;
+        while ((inputLine = in.readLine()) != null) {
+          if (FAILED_TO_READ_APPLICATION_PATTERN.matcher(inputLine).find()) {
+            logger.info("RM job link has expired for application_" + applicationId);
+            isRMJobLinkValid = false;
+            break;
+          }
+          if (INVALID_APPLICATION_ID_PATTERN.matcher(inputLine).find()) {
+            logger.info("Invalid application id application_" + applicationId);
+            return null;
+          }
+        }
+      }
+    } catch (final Exception e) {
+      logger.error("Failed to get job link for application_" + applicationId, e);
+      return null;
+    }
+
+    if (isRMJobLinkValid) {
+      jobLinkUrl = url.toString();
+    } else {
+      // If RM job url has expired, build the url to the JHS or SHS instead.
+      if (!executableNodeFound) {
+        logger.error(
+            "Failed to create job url. Job " + jobId + " doesn't exist in " + exFlow
+                .getExecutionId());
+        return null;
+      }
+      if (node.getType().equals(SPARK_JOB_TYPE)) {
+        jobLinkUrl = sparkHistoryServerUrl.replace(applicationPlaceholder, applicationId);
+      } else {
+        jobLinkUrl = jobHistoryServerUrl.replace(applicationPlaceholder, applicationId);
+      }
+    }
+
+    logger.info("Job link url is " + jobLinkUrl + " for execution " + exFlow.getExecutionId() +
+        ", job " + jobId);
+    return jobLinkUrl;
+  }
+
+  /**
+   * Find all the application ids the job log data contains by matching "application_<id>" pattern.
+   * Application ids are returned in the order they appear.
+   *
+   * @param logData The log data.
+   * @return The set of application ids found.
+   */
+  public static Set<String> findApplicationIdsFromLog(final String logData) {
+    final Set<String> applicationIds = new LinkedHashSet<>();
+    final Matcher matcher = APPLICATION_ID_PATTERN.matcher(logData);
+
+    while (matcher.find()) {
+      final String appId = matcher.group(1);
+      applicationIds.add(appId);
+    }
+
+    logger.info("Application Ids found: " + applicationIds.toString());
+    return applicationIds;
   }
 }

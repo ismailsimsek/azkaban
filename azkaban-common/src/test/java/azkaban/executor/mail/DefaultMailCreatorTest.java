@@ -64,7 +64,6 @@ public class DefaultMailCreatorTest {
     assertNotNull(this.defaultTz);
     // EEST
     TimeZone.setDefault(TimeZone.getTimeZone("Europe/Helsinki"));
-    DateTimeUtils.setCurrentMillisFixed(FIXED_CURRENT_TIME_MILLIS);
 
     this.mailCreator = new DefaultMailCreator();
 
@@ -136,6 +135,8 @@ public class DefaultMailCreatorTest {
   @Test
   public void createFirstErrorMessage() throws Exception {
     setJobStatus(Status.FAILED);
+    // TODO ypadron: implement ability to mock current time in java.time api and remove setEndTime()
+    this.executableFlow.setEndTime(END_TIME_MILLIS);
     this.executableFlow.setStatus(Status.FAILED_FINISHING);
     assertTrue(this.mailCreator.createFirstErrorMessage(
         this.executableFlow, this.message, this.azkabanName, this.scheme, this.clientHostname,
@@ -169,6 +170,19 @@ public class DefaultMailCreatorTest {
     assertEquals("Flow status could not be updated from executor1-host on unit-tests",
         this.message.getSubject());
     assertThat(TestUtils.readResource("failedUpdateMessage.html", this))
+        .isEqualToIgnoringWhitespace(this.message.getBody());
+  }
+
+  @Test
+  public void createFailedHealthCheckMessage() throws Exception {
+    final ExecutorManagerException exception = createTestStracktrace();
+    assertTrue(this.mailCreator
+        .createFailedExecutorHealthCheckMessage(Arrays.asList(this.executableFlow, this.executableFlow),
+            this.executor, exception, this.message, this.azkabanName, this.scheme,
+            this.clientHostname, this.clientPortNumber, ImmutableList.of("test@example.com")));
+    assertEquals("Alert: Executor is unreachable, executor1-host on unit-tests",
+        this.message.getSubject());
+    assertThat(TestUtils.readResource("failedExecutorHealthCheckMessage.html", this))
         .isEqualToIgnoringWhitespace(this.message.getBody());
   }
 

@@ -43,7 +43,7 @@ azkaban.ExecutionListView = Backbone.View.extend({
     var flowStartTime = data.startTime;
     this.updateProgressBar(data, flowStartTime, flowLastTime);
 
-    this.expandFailedOrKilledJobs(data.nodes);
+    this.expandRunningFailedOrKilledJobs(data.nodes);
   },
 
 //
@@ -72,7 +72,7 @@ azkaban.ExecutionListView = Backbone.View.extend({
 
     if (update.nodes) {
       this.updateJobRow(update.nodes, executingBody);
-      this.expandFailedOrKilledJobs(update.nodes);
+      this.expandRunningFailedOrKilledJobs(update.nodes);
     }
 
     var data = this.model.get("data");
@@ -112,8 +112,7 @@ azkaban.ExecutionListView = Backbone.View.extend({
       var startTimeTd = $(row).find("> td.startTime");
       if (node.startTime == -1) {
         $(startTimeTd).text("-");
-      }
-      else {
+      } else {
         var startdate = new Date(node.startTime);
         $(startTimeTd).text(getDateFormat(startdate));
       }
@@ -121,8 +120,7 @@ azkaban.ExecutionListView = Backbone.View.extend({
       var endTimeTd = $(row).find("> td.endTime");
       if (node.endTime == -1) {
         $(endTimeTd).text("-");
-      }
-      else {
+      } else {
         var enddate = new Date(node.endTime);
         $(endTimeTd).text(getDateFormat(enddate));
       }
@@ -164,8 +162,7 @@ azkaban.ExecutionListView = Backbone.View.extend({
       if (node.endTime == -1) {
         $(elapsedTime).text(
             getDuration(node.startTime, (new Date()).getTime()));
-      }
-      else {
+      } else {
         $(elapsedTime).text(getDuration(node.startTime, node.endTime));
       }
 
@@ -297,22 +294,33 @@ azkaban.ExecutionListView = Backbone.View.extend({
     } // else do nothing
   },
 
-  expandFailedOrKilledJobs: function (nodes) {
-    var hasFailedOrKilled = false;
+  propagateExpansionDown: function(flow) {
+    var children = $(flow.joblistrow.subflowrow).find("> td > table > tbody > tr.jobListRow");
+    for (var i = 0; i < children.length; i++) {
+      this.propagateExpansionDown(children[i].node);
+    }
+    if (children.length) {
+      this.setFlowExpansion(flow, true);
+    }
+  },
+
+  expandRunningFailedOrKilledJobs: function (nodes) {
+    var isRunningFailedOrKilled = false;
     for (var i = 0; i < nodes.length; ++i) {
       var node = nodes[i].changedNode ? nodes[i].changedNode : nodes[i];
 
       if (node.type === "flow") {
-        if (this.expandFailedOrKilledJobs(node.nodes || [])) {
-          hasFailedOrKilled = true;
+        if (this.expandRunningFailedOrKilledJobs(node.nodes || [])) {
+          isRunningFailedOrKilled = true;
           this.setFlowExpansion(node, true);
         }
 
-      } else if (node.status === "FAILED" || node.status === "KILLED") {
-        hasFailedOrKilled = true;
+      } else if (node.status === "RUNNING" || node.status === "FAILED" ||
+          node.status === "KILLED") {
+        isRunningFailedOrKilled = true;
       }
     }
-    return hasFailedOrKilled;
+    return isRunningFailedOrKilled;
   },
 
   addNodeRow: function (node, body) {
@@ -325,6 +333,7 @@ azkaban.ExecutionListView = Backbone.View.extend({
     var tdEnd = document.createElement("td");
     var tdElapse = document.createElement("td");
     var tdStatus = document.createElement("td");
+    var tdCluster = document.createElement("td");
     var tdDetails = document.createElement("td");
     node.joblistrow = tr;
     tr.node = node;
@@ -338,6 +347,7 @@ azkaban.ExecutionListView = Backbone.View.extend({
     $(tr).append(tdElapse);
     $(tr).append(tdStatus);
     $(tr).append(tdDetails);
+    $(tr).append(tdCluster);
     $(tr).addClass("jobListRow");
 
     $(tdName).addClass("jobname");
@@ -350,6 +360,7 @@ azkaban.ExecutionListView = Backbone.View.extend({
     $(tdEnd).addClass("endTime");
     $(tdElapse).addClass("elapsedTime");
     $(tdStatus).addClass("statustd");
+    $(tdCluster).addClass("cluster");
     $(tdDetails).addClass("details");
 
     $(tdType).text(node.type);
@@ -381,6 +392,16 @@ azkaban.ExecutionListView = Backbone.View.extend({
         var parent = $(evt.currentTarget).parents("tr")[0];
         self.setFlowExpansion(parent.node);
       });
+
+      if (atLeastOneChildHasChildren(node)) {
+        // Add the double down expand all
+        var expandAllDiv = createExpandAllButton();
+        $(expandAllDiv).click(function (evt) {
+          var parent = $(evt.currentTarget).parents("tr")[0];
+          self.propagateExpansionDown(parent.node);
+        });
+        $(tdName).append(expandAllDiv);
+      }
     }
 
     var status = document.createElement("div");
@@ -395,10 +416,17 @@ azkaban.ExecutionListView = Backbone.View.extend({
     }
 
     if (node.type != 'flow' && node.status != 'SKIPPED') {
+      if (node.cluster != null) {
+        var clusterLink = document.createElement("a");
+        $(clusterLink).attr("href", node.cluster);
+        $(clusterLink).text("cluster");
+        $(tdCluster).append(clusterLink);
+      }
+
       var a = document.createElement("a");
       $(a).attr("href", logURL);
       //$(a).attr("id", node.id + "-log-link");
-      $(a).text("Details");
+      $(a).text("Log");
       $(tdDetails).append(a);
     }
 
